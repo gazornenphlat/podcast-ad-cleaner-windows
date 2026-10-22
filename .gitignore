@@ -1,0 +1,49 @@
+# ---- your own settings and private notes (never share these) ----
+config.yaml
+config.yaml.bak
+config.check.yaml
+*.bak
+.env
+.env.*
+memory.md
+
+# ---- what the app writes while it runs ----
+logs/
+hang-report.txt
+*.db
+*.db-wal
+*.db-shm
+*.db-journal
+*.json.migrated
+*.corrupt-*.json
+*.part
+Model tests/
+
+# ---- big downloads and builds (made on each PC, not stored here) ----
+models/
+whisper.cpp/
+whisper.cpp-src/
+whisper.cpp-src.old-*/
+whisper_servers/
+build/
+dist/
+*.spec
+
+# ---- Python ----
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.coverage
+htmlcov/
+*.egg-info/
+
+# ---- editors and Windows / macOS clutter ----
+.vscode/
+.idea/
+*.swp
+Thumbs.db
+desktop.ini
+.DS_Store

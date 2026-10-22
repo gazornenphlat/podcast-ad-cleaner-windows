@@ -1,0 +1,13 @@
+faster-whisper>=1.1
+# openai-whisper   # optional: only if whisper.engine is openai-whisper
+requests>=2.31
+feedparser>=6.0
+defusedxml>=0.7
+PyYAML>=6.0
+ruamel.yaml>=0.18
+mutagen>=1.47
+pystray>=0.19
+Pillow>=10.0
+numpy
+pydantic>=2.5
+pywebview>=5.0

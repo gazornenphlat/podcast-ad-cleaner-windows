@@ -1,0 +1,381 @@
+# ============================================================
+#  Podcast Ad Cleaner (Windows) - configuration
+#  Copy this file to config.yaml and edit. It is re-read at the
+#  start of every check, so changes apply without restarting.
+#  Windows paths: use forward slashes or single quotes,
+#  e.g.  'D:\Podcasts'   or   D:/Podcasts
+# ============================================================
+
+# Where cleaned podcasts go. Each podcast gets its own subfolder:
+#   <output_dir>/<Podcast Name>/<date> - <episode>.mp3
+#   <output_dir>/<Podcast Name>/assets/   (vtt, chapters json, txt)
+output_dir: "~/Podcasts (Ad-Free)"
+
+# Minutes between checks. If processing takes longer than this,
+# the next check starts as soon as the current work finishes.
+check_interval_minutes: 60
+
+# Scratch space for downloads/intermediate files (blank = system temp).
+temp_dir: ""
+
+log_file: "logs/podcast-cleaner.log"
+log_level: INFO            # DEBUG for troubleshooting
+
+notifications: true        # Windows toast when an episode is done / fails
+check_on_startup: true     # run a check immediately when the tray app starts
+
+# ---------- external tools ----------
+tools:
+  ffmpeg: ffmpeg           # or full path, e.g. 'C:\ffmpeg\bin\ffmpeg.exe'
+  ffprobe: ffprobe
+
+# ---------- transcription ----------
+whisper:
+  engine: faster-whisper   # faster-whisper | whisper.cpp (AMD/Intel/NVIDIA GPU via Vulkan) | openai-whisper
+  model: small             # tiny | base | small | medium | large-v3 | turbo
+                           #   distilled (faster-whisper, ~2x faster, nearly as accurate):
+                           #   distil-small.en | distil-medium.en | distil-large-v3 | distil-large-v3.5
+                           #   (.en = English only)
+                           #   whisper.cpp also takes quantized models: small-q5_1 | medium-q5_0 | large-v3-turbo-q5_0
+                           #   CPU: small is a good balance.  NVIDIA GPU: turbo or large-v3.
+  language: en             # blank = auto-detect
+  device: auto             # auto | cpu | cuda
+  compute_type: auto       # auto (int8 on CPU, float16 on GPU) | int8 | int8_float16 | float16 | float32
+  beam_size: 5             # 1 = fastest, 5 = more accurate
+  vad_filter: false        # skip silence/music; faster, but can drop quiet speech
+  cpu_threads: 0           # 0 = automatic
+  model_dir: ""            # where models are cached (blank = default)
+  unload_after_cycle: true # free RAM/VRAM while idle
+  # faster-whisper: transcribe this many 30-second pieces at once - about 2x faster on a CPU (more on a
+  # GPU) for about twice the memory. Batched mode skips music and silence. 0 = off.
+  batch_size: 8
+
+# ---------- whisper.cpp (whisper.engine: whisper.cpp) ----------
+# Runs Whisper on AMD / Intel / NVIDIA graphics through Vulkan - including integrated graphics like the
+# Radeon 680M, which faster-whisper can't use. Run  build-whisper-vulkan.ps1  once to build it; it puts
+# whisper-cli.exe in .\whisper.cpp\ (found automatically). Models download on first use.
+# Other computers that transcribe (the Transcription tab). Each episode is transcribed whole on one of them,
+# so several episodes are transcribed at once. They only transcribe - the AI that finds ads is set under ai:.
+transcription:
+  this_pc: always          # always | when_others_busy | never (then only if none of the others can)
+  servers: []
+  #  - {url: 192.168.1.20, name: Gaming PC, kind: speaches}       # speaches (faster-whisper), port 8000
+  #  - {url: 192.168.1.30, name: Laptop, kind: whispercpp}        # whisper.cpp's whisper-server, port 8080
+  #  - {url: 192.168.1.40, kind: speaches, model: Systran/faster-whisper-large-v3, enabled: false}
+
+whisper_cpp:
+  exe: ""                  # blank = .\whisper.cpp\whisper-cli.exe, or give the full path
+  model: ""                # blank = whisper.model; e.g. large-v3-turbo-q5_0 (accurate) or small-q5_1 (fast)
+  gpu: true
+  flash_attention: true
+  threads: 0               # 0 = one per CPU core
+  model_dir: ""            # blank = .\models\whisper.cpp
+
+# ---------- ad detection / chapters (Ollama) ----------
+ollama:
+  url: http://localhost:11434
+  model: llama3.2:3b       # bigger models (qwen2.5:7b, llama3.1:8b) find ads more reliably
+  timeout_seconds: 300     # give up if Ollama produces NO output for this long (slow-but-working is fine)
+  temperature: 0.1
+  num_ctx: 8192            # context window; must fit one chunk of transcript
+  chunk_minutes: 10
+  chunk_overlap_seconds: 30
+  # If Ollama is not running: true = postpone episodes until it is,
+  # false = process anyway (no ad removal, interval chapters only).
+  required: true
+  # Extra guidance appended to the prompt, e.g.
+  # "Treat plugs for the hosts' Patreon as ads."
+  extra_instructions: ""
+  # Remember sponsors found in earlier episodes of each show and mention them in the
+  # prompt, so recurring ads are caught more reliably. Stored in .podcast-state.json.
+  remember_sponsors: true
+  max_known_sponsors: 25
+  # Every removed ad is recorded in <output_dir>\ads.csv (also shown in the window's Ads tab).
+  # Sponsors from ALL shows are named in the prompt so they're recognised everywhere,
+  # and anything you mark "Not an ad" in the Ads tab is listed as NOT an ad.
+  use_global_sponsors: true
+  max_global_sponsors: 40
+  use_ad_feedback: true
+  # Sponsors to watch for on EVERY show, even if the AI has never found them.
+  # Edit here or in the window: Ads tab > Always watch for > Add sponsor...
+  watch_sponsors: []
+  # Mark web addresses, promo codes, phone numbers and "brought to you by" in the text sent to the AI
+  highlight_cues: true
+
+  # ----- more computers (Ollama pool) -----
+  # Other PCs running Ollama with the SAME model. Each episode's sections are shared out
+  # among them (and this PC); a PC that's off or fails is skipped and its section redone
+  # elsewhere. On each of those PCs:
+  #   1. ollama pull <the model above>
+  #   2. set the Windows environment variable OLLAMA_HOST=0.0.0.0 and restart Ollama
+  #   3. allow TCP port 11434 in Windows Firewall (home network only - Ollama has no password)
+  # Entries are an address, or a mapping:
+  #   servers:
+  #     - http://192.168.1.20:11434
+  #     - url: http://gaming-pc:11434
+  #       name: Gaming PC
+  #       parallel: 2      # sections at once (needs OLLAMA_NUM_PARALLEL=2 on that PC)
+  #       enabled: true
+  servers: []
+  # When this PC's Ollama (url above) takes sections too:
+  #   when_idle - only while Whisper has nothing to transcribe (Whisper and Ollama share the CPU)
+  #   always    - always (good if this PC has a GPU)
+  #   never     - only if no other PC is reachable
+  this_pc: when_idle
+  this_pc_parallel: 1
+
+# ---------- only check each show when it usually publishes ----------
+# Learned from the publish dates in each show's feed (shown in the window's Podcasts tab, "Checked").
+# E.g. a show that posts weekdays around 6 AM is checked weekdays 5 AM - 9 AM only; a show that never
+# posts at weekends isn't checked at weekends. Nothing is missed - the next check finds anything posted
+# meanwhile - it can only be found a little later. Shows without a clear pattern are checked every time.
+# The Check now button, episodes you pick, and new shows always check right away.
+# Turn off for one show with  smart_schedule: false  under it (or Podcasts > Edit).
+smart_schedule:
+  enabled: true
+  min_episodes: 6          # need at least this many recent episodes to learn from
+  history_days: 120        # look at episodes from this far back
+  window_share: 0.8        # the window must hold this share of releases...
+  max_window_hours: 10     # ...within this many hours, else "any time"
+  before_minutes: 60       # start checking this long before the usual time
+  after_minutes: 180       # and keep checking this long after (late uploads, delayed feeds)
+  late_hours: 24           # an expected episode that hasn't appeared: keep checking this long
+  max_hours_between_checks: 0   # safety net: check at least this often anyway (0 = off)
+
+# ---------- working on two episodes at once ----------
+processing:
+  # Transcribe the next episode while the current one is analyzed / cut.
+  # false = one episode at a time, every step in turn.
+  overlap_stages: true
+  prepare_ahead: 1         # how many episodes may be transcribed ahead of the one being analyzed
+  # New episodes of LOW-priority shows are only started between these times (e.g. overnight). Other
+  # shows, re-analyses and files you clean aren't affected; waiting episodes are listed in Up next.
+  # Times may cross midnight (22:00 - 06:00). Also in Settings > Low-priority hours.
+  low_priority_hours:
+    enabled: false
+    start: "01:00"
+    end: "06:00"
+
+# ---------- phone notifications (ntfy - free, no account) ----------
+# Install the ntfy app, subscribe to a topic name only you know (it works like a password) and put it
+# here - or use Settings > Phone notifications (with a Send a test button).
+phone_notifications:
+  ntfy_topic: ""
+  ntfy_server: https://ntfy.sh   # or your own ntfy server
+  ntfy_token: ""                 # only for a private server with access control
+  episodes: true                 # an episode is ready
+  held: true                     # something was held for review
+  problems: true                 # failed episodes, a feed failing 3 checks in a row
+
+# ---------- LM Studio / LM Studio Bionic (ai.service: lmstudio) ----------
+# Uses LM Studio's local server (LM Studio > Developer > Start server; on other PCs also turn on
+# "Serve on Local Network"). LM Studio Bionic's local models run on the same LM Studio runtime.
+# The model is loaded for you with these GPU settings if it isn't loaded already.
+lmstudio:
+  url: http://localhost:1234     # this PC
+  servers: []                    # other PCs, e.g. [192.168.1.20, gaming-pc]
+  model: ""                      # e.g. qwen/qwen3-8b; blank = whatever is loaded (AI tab lists them)
+  api_token: ""                  # only if you turned on authentication in LM Studio
+  this_pc: always                # when_idle | always | never (as for Ollama; always suits a GPU)
+  timeout_seconds: 600
+  load:
+    auto_load: true
+    gpu: max                     # GPU offload: max | off | 0.0-1.0 | auto (needs LM Studio's  lms  command)
+    context_length: 8192
+    flash_attention: true
+    offload_kv_cache_to_gpu: true
+    parallel: 4                  # sections sent to each PC at once
+
+# ---------- use a cloud AI service instead of Ollama (optional) ----------
+# Also set in the window: AI tab > Who finds the ads.
+# Cloud services are much faster than a CPU running Ollama, but episode transcripts are sent to
+# that company and you pay per use (a 2-hour episode is ~40,000 words of input).
+ai:
+  service: ollama            # ollama | lmstudio | openai | anthropic | gemini | compatible
+  fallback_to_ollama: true   # if the service fails or runs out of credit, use Ollama instead
+  parallel: 4                # sections sent at once
+  timeout_seconds: 180
+  # API keys: here, or leave blank and set OPENAI_API_KEY / ANTHROPIC_API_KEY / GEMINI_API_KEY
+  # (AI_API_KEY for "compatible"). Model: blank = the default shown; the AI tab lists what your key can use.
+  openai:     {api_key: "", model: ""}      # default gpt-5-mini
+  anthropic:  {api_key: "", model: ""}      # default claude-haiku-5-5
+  gemini:     {api_key: "", model: ""}      # default gemini-3.5-flash-lite
+  # Any OpenAI-compatible API: Groq, OpenRouter, Mistral, DeepSeek, Together, xAI, LM Studio, vLLM...
+  compatible: {name: "", base_url: "", api_key: "", model: ""}   # e.g. base_url: https://api.groq.com/openai/v1
+
+ad_removal:
+  enabled: true
+  min_ad_seconds: 10       # ignore detections shorter than this
+  max_ad_seconds: 300      # ignore detections longer than this (likely false positive)
+  merge_gap_seconds: 5     # join ads separated by less than this
+  padding_seconds: 0.0     # extra seconds trimmed around each ad
+  use_rss_ad_chapters: true  # chapters titled "Ad", "[Ad]", "Sponsor"... count as ads
+  # The AI rates how sure it is about each ad; less sure than this and it's left in (and listed in the
+  # episode's report.txt).
+  min_confidence: 0.6
+  # Add each ad's lead-in ("brought to you by") and its way back ("now back to the show") - no AI needed.
+  extend_with_cues: true
+  # Ask the AI a second time, per ad, exactly where it starts and ends (one more request per ad - fine with
+  # a GPU or a cloud service, slow on a CPU).
+  refine_boundaries: false
+  # Remember the words of every ad cut; the same read in a later episode (any show) is then found by a
+  # text match without the AI, and text you marked "Not an ad" is never cut. Saved in .learned-ads.json.
+  learn_ads: true
+  learn_min_confidence: 0.8   # only learn ads the AI was at least this sure of
+  # Push an ad's end over the next line or two when they still name the sponsor or give a web
+  # address / promo code.
+  complete_tails: true
+  # Join ads in the same break into one cut when no more than this many seconds of talk separate
+  # them (music and silence don't count). 0 = off.
+  ad_break_gap_seconds: 12
+  # If the feed links the publisher's own transcript (usually made before ads were inserted), speech
+  # missing from it confirms an ad - or, when nothing else found one there, is held for you to review.
+  use_publisher_transcript: true
+  # What to cut besides sponsor ads (always cut). Each podcast can override these with its own
+  # remove: {intro: true, ...} (or in the window: Podcasts > Edit > Also cut).
+  #   cross_promo - ads for other podcasts/shows      self_promo - the hosts' Patreon, merch, tour...
+  #   intro / outro - the generic opening and sign-off (greeting, credits, "rate and review"; never the
+  #                   real content, a cold open or a summary)
+  #   jingle      - ad jingles, bumpers and dead air around ads (stretches with no speech are shown to
+  #                 the AI, which decides from the lines around them)
+  remove:
+    cross_promo: true
+    self_promo: false
+    intro: false
+    outro: false
+    jingle: true
+
+# Download each episode a second time, looking like a different podcast app. Ad servers often insert
+# different ads per download, so parts that differ are inserted ads: they confirm (and extend) ads
+# already found, or are held for you to review. Doubles the downloading.
+#   auto - only for hosts known to insert ads (Megaphone, Art19, Acast, Omny, Simplecast...)
+#   on   - every episode        off - never
+second_download:
+  mode: auto
+  max_similarity: 0.8   # parts at most this alike count as different (the same audio, even
+                        # re-encoded, scores 0.95+; different audio 0.75 or less)
+  min_seconds: 10       # ignore differences shorter than this
+
+# Possible ads that weren't cut are listed under Ads > Held for review: ones the AI was between
+# min_confidence here and ad_removal.min_confidence sure of, parts that differed on a second download,
+# speech missing from the publisher's transcript. Approve & cut re-cuts the episode at once from the
+# kept original (no new download, no AI).
+review:
+  enabled: true
+  min_confidence: 0.4
+  keep_original: when_held   # when_held / always / never (originals live in .originals)
+  keep_days: 14              # then they're deleted (approving still teaches future episodes)
+
+chapters:
+  prefer_feed_chapters: true    # use publisher chapters when the feed has them
+  min_chapter_seconds: 60
+  fallback_interval_minutes: 10 # used when no chapters were found at all
+  # Publisher chapters come from the feed, else from inside the MP3, else from a timestamp list in the
+  # episode description. When they mark ads ("Ad", "Sponsor: ..."):
+  #   combine  - cut those AND what the AI finds (default)
+  #   skip_ai  - trust them: don't ask the AI for that episode
+  #   skip_all - trust them: skip transcription too (fastest; no transcript files for that episode)
+  publisher_ads: combine
+
+output:
+  bitrate: 128k
+  embed_artwork: true
+  max_title_length: 100    # keeps paths under Windows' 260-char limit
+  crossfade_ms: 40         # smooth each cut with a short crossfade (0 = hard cut)
+  # A soft wooden "tock" where something was cut (two rising notes if the start was cut, two falling if
+  # the end was, one low note in the middle), so you know a jump is an edit. It stands in for part of the
+  # cut, so chapters and transcripts stay exact.
+  cut_tones: true
+  # An "AD-FREE" badge on the artwork in the MP3 and on the show's cover in your phone feeds.
+  artwork_badge: true
+  # Episode names start with the publish date: "10-18-26 - Title" in the file name, and (with
+  # date_in_title) in the title your podcast app shows. Format codes: %m month, %d day, %y 2-digit
+  # year, %Y 4-digit year - e.g. "%Y-%m-%d" gives 2026-10-18.
+  # Even out the volume of every cleaned episode to the podcast standard (-16 LUFS), so shows mastered
+  # quiet or loud all play at the same level. The audio is measured first, then one fixed adjustment is
+  # applied (the show's own dynamics are kept). Adds a quick measuring pass per episode.
+  normalize:
+    enabled: true
+    loudness: -16          # LUFS: -16 podcast/mobile standard, -19 quieter, -14 louder
+    true_peak: -1.5        # dBTP ceiling, avoids clipping on phones/Bluetooth
+    lra: 11
+  date_format: "%m-%d-%y"
+  date_in_title: true
+  # Keep every episode's transcript (.vtt + .txt) in <podcast>\transcripts\,
+  # in addition to the latest-only copies in assets\.
+  archive_transcripts: true
+
+# ---------- downloading ----------
+download:
+  # A feed check gives up after this many seconds (a stuck or very slow server) and moves on to the next
+  # show; that show is tried again at the next check. Its failures show in the log and the Health check.
+  feed_timeout_seconds: 60
+  # An episode download that gets no data for this long is given up (tried again at the next check).
+  stall_seconds: 120
+  # If the app stays on the same step this many minutes while working, it writes where it is stuck into
+  # the log (look for "Nothing has changed for"). 0 = off.
+  hang_report_minutes: 10
+  # Many feeds wrap the audio link in a chain of tracking redirects
+  # (e.g. arttrk.com/.../podscribe/.../traffic.megaphone.fm/xyz.mp3). true = go straight to
+  # the real host (more private, and works if your network blocks tracking domains);
+  # if that fails, the rest of the chain is tried.
+  skip_trackers: true
+
+# ---------- RSS feed server (subscribe from your phone) ----------
+# Feeds are listed at http://<this-pc>:8585/  (tray menu: "Open feed page").
+server:
+  enabled: true
+  host: 0.0.0.0            # 0.0.0.0 = reachable from your network; 127.0.0.1 = this PC only
+  port: 8585
+  # Address your phone uses to reach this PC. Blank = this PC's LAN address.
+  # Set it for Tailscale / a reverse proxy, e.g. http://my-pc.tailnet-name.ts.net:8585
+  public_url: ""
+  # Optional secret path segment, e.g. "k3x9q2" -> http://pc:8585/k3x9q2/feed/...
+  # Recommended if the server is reachable from outside your home network.
+  token: ""
+  include_combined_feed: true  # also publish /feed/all.xml with every show
+
+# ---------- defaults applied to every podcast (override per podcast) ----------
+podcast_defaults:
+  enabled: true
+  # true  = new episodes download automatically
+  # false = new episodes are only listed; pick them from the tray menu "Choose episodes"
+  #         (or `python -m podcast_cleaner list` / `get`). Set this per podcast.
+  auto_download: true
+  initial_episodes: 1        # first time a podcast is seen, process only the newest N
+  max_episodes_per_check: 3  # cap per check, so a backlog doesn't block other shows
+  max_retries: 3             # give up on an episode after this many failures
+  # Retention: delete older cleaned episodes (MP3 + archived transcripts).
+  # The newest episode is never deleted. 0 = keep everything.
+  keep_episodes: 0           # keep at most N episodes per podcast
+  keep_days: 0               # delete episodes published more than N days ago
+  sponsors: []               # sponsors you already know advertise on a show, e.g. [BetterHelp, Squarespace]
+  # Where a show's new episodes go in Up next:
+  #   highest - to the very top (ahead of everything waiting)
+  #   high   - right after the highest ones (still ahead of everything else waiting)
+  #   medium - after the episodes already waiting (default)
+  #   low    - to the bottom
+  # Episodes you've arranged yourself keep your order. Set per podcast, or in Podcasts > Edit.
+  priority: medium
+
+# ---------- podcasts to watch ----------
+# To choose episodes yourself for a show, add  auto_download: false  under it, e.g.
+#   - name: "The Joe Rogan Experience"
+#     rss: "https://feeds.megaphone.fm/GLT1412515089"
+#     auto_download: false
+# Give either `rss` (preferred) or `search` (looked up once on iTunes,
+# the resulting feed URL is remembered). Find an RSS URL with:
+#   python -m podcast_cleaner search "show name"
+podcasts:
+  - name: "The Daily"
+    rss: "https://feeds.simplecast.com/54nAGcIl"
+
+  - name: "Hard Fork"
+    search: "Hard Fork"
+    initial_episodes: 2
+    keep_episodes: 10
+    sponsors: [Squarespace]
+
+  # - name: "Some Other Show"
+  #   rss: "https://example.com/feed.xml"
+  #   enabled: false

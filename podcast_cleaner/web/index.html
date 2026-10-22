@@ -1,0 +1,371 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#F9F7F2">
+<title>Podcast Cleaner</title>
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<header class="top">
+  <div class="brand">
+    <h1>Podcast Cleaner</h1>
+    <span id="pill" class="pill"><i></i><span>Connecting…</span></span>
+  </div>
+  <div class="top-actions">
+    <button id="btn-feeds" class="btn ghost hide-phone" type="button" title="Subscribe to the ad-free feeds on your phone">Phone feeds</button>
+    <button id="btn-folder" class="btn ghost hide-phone" type="button" hidden>Open folder</button>
+    <button id="btn-pause" class="btn secondary" type="button">Pause</button>
+    <button id="btn-check" class="btn primary" type="button">Check now</button>
+  </div>
+  <nav class="tabs" id="tabs" aria-label="Pages">
+    <a href="#activity" data-view="activity" class="main"><svg viewBox="0 0 24 24"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg><span>Activity</span></a>
+    <a href="#podcasts" data-view="podcasts" class="main"><svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg><span>Podcasts</span></a>
+    <a href="#choose" data-view="choose"><span>Choose Episodes</span><b class="count" id="choose-count"></b></a>
+    <a href="#browse" data-view="browse"><span>Browse Feeds</span></a>
+    <a href="#rules" data-view="rules"><span>Ad Rules</span></a>
+    <a href="#ads" data-view="ads" class="main"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M4 12a8 8 0 1 0 16 0 8 8 0 1 0-16 0"/></svg><span>Found Ads</span></a>
+    <a href="#stats" data-view="stats"><span>Stats</span></a>
+    <a href="#ai" data-view="ai"><span>AI</span></a>
+    <a href="#transcription" data-view="transcription"><span>Transcription</span></a>
+    <a href="#settings" data-view="settings"><span>Settings</span></a>
+    <a href="#log" data-view="log"><span>Log</span></a>
+    <button type="button" id="more-btn" class="more"><svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></svg><span>More</span></button>
+  </nav>
+</header>
+
+<main id="main">
+  <!-- ================= Activity ================= -->
+  <section class="view" id="view-activity">
+    <div class="card now" id="now">
+      <div class="label">Now</div>
+      <h2 id="now-title">—</h2>
+      <p class="muted" id="now-sub"></p>
+      <div class="bar" id="now-bar" hidden><div></div></div>
+      <ul class="also" id="now-also"></ul>
+      <div class="row-actions" id="now-actions" hidden>
+        <button class="btn secondary" id="btn-stop-after" type="button">Stop after this episode</button>
+        <button class="btn secondary" id="btn-skip" type="button">Skip this episode</button>
+        <button class="btn ghost" id="btn-stop-now" type="button">Stop now</button>
+      </div>
+    </div>
+    <div class="grid2">
+      <div class="card">
+        <div class="card-head">
+          <div class="label">Up next</div>
+          <span class="muted small" id="upnext-count"></span>
+        </div>
+        <ul class="list selectable" id="upnext"></ul>
+        <div class="row-actions sticky" id="upnext-actions">
+          <button class="btn primary" id="btn-start" type="button" disabled>Start now</button>
+          <button class="btn secondary" id="btn-top" type="button" disabled>To top</button>
+          <button class="btn secondary icon" id="btn-up" type="button" disabled aria-label="Move up">↑</button>
+          <button class="btn secondary icon" id="btn-down" type="button" disabled aria-label="Move down">↓</button>
+          <button class="btn secondary" id="btn-bottom" type="button" disabled>To bottom</button>
+          <button class="btn ghost" id="btn-skip-sel" type="button" disabled>Skip</button>
+        </div>
+        <p class="muted small" id="upnext-hint"></p>
+      </div>
+      <div class="card">
+        <div class="card-head">
+          <div class="label">Finished</div>
+          <input class="search" id="recent-search" type="search" placeholder="Search" aria-label="Search finished">
+        </div>
+        <ul class="list" id="recent"></ul>
+      </div>
+    </div>
+    <div class="card" id="transcribers-card" hidden>
+      <div class="card-head"><div class="label">Computers transcribing</div></div>
+      <ul class="list" id="transcribers"></ul>
+    </div>
+    <div class="card" id="machines-card" hidden>
+      <div class="card-head"><div class="label">Computers finding ads</div></div>
+      <ul class="list" id="machines"></ul>
+    </div>
+  </section>
+
+  <!-- ================= Podcasts ================= -->
+  <section class="view" id="view-podcasts" hidden>
+    <div class="card">
+      <div class="card-head">
+        <div class="label">Your podcasts</div>
+        <input class="search" id="pod-search" type="search" placeholder="Search" aria-label="Search podcasts">
+      </div>
+      <div class="row-actions" style="margin:0 0 10px">
+        <button class="btn primary" id="pod-add" type="button">Add podcast</button>
+        <button class="btn secondary local" id="pod-clean" type="button" hidden>Clean files…</button>
+        <details class="menu">
+          <summary class="btn secondary">OPML</summary>
+          <div class="menu-body">
+            <label class="btn ghost small">Import podcasts…<input type="file" id="opml-file" accept=".opml,.xml,text/xml" hidden></label>
+            <a class="btn ghost small" id="opml-adfree" href="#">Export ad-free feeds</a>
+            <a class="btn ghost small" id="opml-orig" href="#">Export original feeds</a>
+          </div>
+        </details>
+      </div>
+      <ul class="list pods" id="pods"></ul>
+    </div>
+  </section>
+
+  <!-- ================= Choose episodes ================= -->
+  <section class="view" id="view-choose" hidden>
+    <div class="card">
+      <div class="card-head"><div class="label">Choose episodes</div></div>
+      <p class="muted small" id="choose-hint">Shows set to "Let me choose" list their new episodes here. Tick some and press Download or Skip.</p>
+      <div id="choose"></div>
+      <div class="row-actions sticky">
+        <button class="btn primary" id="choose-get" type="button" disabled>Download</button>
+        <button class="btn secondary" id="choose-skip" type="button" disabled>Skip</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= Browse feeds ================= -->
+  <section class="view" id="view-browse" hidden>
+    <div class="card">
+      <div class="card-head">
+        <div class="label">Browse a feed</div>
+        <div class="inline">
+          <select id="browse-show" aria-label="Podcast"></select>
+          <button class="btn secondary icon" id="browse-refresh" type="button" title="Load the feed again">↻</button>
+        </div>
+      </div>
+      <div class="inline" style="margin-bottom:8px">
+        <input class="search" id="browse-search" type="search" placeholder="Search episodes" aria-label="Search episodes">
+        <label class="small check"><input type="checkbox" id="browse-hide"> Hide downloaded</label>
+      </div>
+      <p class="muted small" id="browse-info"></p>
+      <ul class="list" id="browse"></ul>
+      <div class="row-actions sticky">
+        <button class="btn primary" id="browse-get" type="button" disabled>Download selected</button>
+        <button class="btn secondary" id="browse-all" type="button">Select all shown</button>
+        <button class="btn ghost" id="browse-none" type="button">Clear</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= Ad rules ================= -->
+  <section class="view" id="view-rules" hidden>
+    <div class="card">
+      <div class="label">What counts as an ad</div>
+      <p class="muted small">Plain-English guidance added to the AI's instructions for every show. Say what IS an ad and what is NOT —
+        the second part keeps real content from being cut. Sponsors for one show go in Podcasts › Edit › Known sponsors.</p>
+      <textarea id="rules-text" rows="5" placeholder="e.g. Ads for other shows on the same network are ads."></textarea>
+      <div class="row-actions"><button class="btn ghost small" id="rules-example" type="button">Insert example</button>
+        <span class="muted small">Keep it short and specific; long instructions can confuse small models.</span></div>
+    </div>
+    <div class="grid2">
+      <div class="card"><div class="label">What to cut</div><div class="form" id="rules-cut"></div></div>
+      <div class="card"><div class="label">Detection</div><div class="form" id="rules-detect"></div></div>
+    </div>
+    <div class="card"><div class="label">More checks</div><div class="form" id="rules-more"></div></div>
+    <div class="row-actions save-bar">
+      <button class="btn primary" id="rules-save" type="button">Save ad rules</button>
+      <button class="btn secondary" id="rules-undo" type="button">Undo changes</button>
+      <span class="muted small">Applies to episodes processed after saving.</span>
+    </div>
+  </section>
+
+  <!-- ================= Found ads ================= -->
+  <section class="view" id="view-ads" hidden>
+    <div class="card" id="held-card">
+      <div class="card-head">
+        <div class="label">Held for review</div>
+        <span class="muted small" id="held-count"></span>
+      </div>
+      <p class="muted small">The AI wasn't sure about these, so they were left in. Cut them (and learn them for next time), or tell it they're not ads.</p>
+      <ul class="list" id="held"></ul>
+    </div>
+    <div class="grid2 wide-left">
+      <div class="card">
+        <div class="card-head">
+          <div class="label">Ads removed recently</div>
+          <input class="search" id="ads-search" type="search" placeholder="Search" aria-label="Search ads">
+        </div>
+        <ul class="list" id="ads"></ul>
+        <div class="row-actions">
+          <a class="btn ghost small" href="../api/ads-csv">Download ads.csv</a>
+          <button class="btn ghost small local" id="ads-csv-open" type="button" hidden>Open ads.csv</button>
+        </div>
+      </div>
+      <div class="stack">
+        <div class="card">
+          <div class="label">Sponsors found</div>
+          <ul class="list compact" id="sponsors"></ul>
+        </div>
+        <div class="card">
+          <div class="label">Always watch for (every show)</div>
+          <ul class="list compact" id="watch"></ul>
+          <div class="inline" style="margin-top:8px">
+            <input class="search" id="watch-new" placeholder="Sponsor name" aria-label="Sponsor to watch for">
+            <button class="btn secondary small" id="watch-add" type="button">Add</button>
+          </div>
+        </div>
+        <div class="card">
+          <div class="label">Learned ads</div>
+          <p class="muted small" id="learned-info"></p>
+          <div class="row-actions">
+            <a class="btn secondary small" href="../api/learned-export">Share (export)</a>
+            <label class="btn secondary small">Add shared (import)…<input type="file" id="learned-file" accept=".json" hidden></label>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= Stats ================= -->
+  <section class="view" id="view-stats" hidden>
+    <div class="tiles" id="tiles"></div>
+    <div class="card">
+      <div class="label">Time removed per week</div>
+      <div class="chart" id="chart"></div>
+    </div>
+    <div class="card">
+      <div class="label">By podcast</div>
+      <table class="table" id="by-show"><thead><tr><th>Podcast</th><th class="num">Episodes</th>
+        <th class="num">Ads</th><th class="num">Time removed</th></tr></thead><tbody></tbody></table>
+    </div>
+  </section>
+
+  <!-- ================= AI ================= -->
+  <section class="view" id="view-ai" hidden>
+    <div class="card">
+      <div class="label">AI Service</div>
+      <div class="form" id="ai-form"></div>
+      <div class="row-actions">
+        <button class="btn primary" id="ai-save" type="button">Save</button>
+        <button class="btn secondary" id="ai-test" type="button">Test</button>
+        <span class="small" id="ai-status"></span>
+      </div>
+      <p class="muted small" id="ai-note"></p>
+    </div>
+    <div class="card">
+      <div class="card-head"><div class="label" id="pcs-title">Computers</div></div>
+      <p class="muted small" id="pcs-desc"></p>
+      <ul class="list" id="pcs"></ul>
+      <div class="row-actions">
+        <input class="search" id="pc-addr" placeholder="Address, e.g. 192.168.1.20" aria-label="PC address">
+        <input class="search" id="pc-name" placeholder="Name (optional)" aria-label="PC name" style="width:160px">
+        <button class="btn secondary" id="pc-add" type="button">Add PC</button>
+        <button class="btn ghost" id="pc-test" type="button">Test all</button>
+        <label class="small inline">This PC helps <select id="pc-this"><option>when_idle</option><option>always</option><option>never</option></select></label>
+      </div>
+      <p class="muted small" id="pcs-hint"></p>
+    </div>
+    <div class="card">
+      <div class="card-head"><div class="label">Test AI models</div></div>
+      <p class="muted small">Runs each AI you tick over episodes whose ads you've checked, and scores it: how much of the real ad time it finds,
+        how much it would cut wrongly, and how long it takes. Pick 2–5 typical episodes. Nothing is cut or changed.</p>
+      <div class="grid2">
+        <div><div class="label small-label">Episodes</div><ul class="list compact" id="bench-eps"></ul></div>
+        <div><div class="label small-label">AI to test</div><ul class="list compact" id="bench-setups"></ul></div>
+      </div>
+      <div class="bar" id="bench-bar" hidden><div></div></div>
+      <p class="muted small" id="bench-progress"></p>
+      <div class="row-actions">
+        <button class="btn primary" id="bench-run" type="button">Run test</button>
+        <button class="btn secondary" id="bench-stop" type="button" hidden>Stop</button>
+      </div>
+      <pre class="report" id="bench-report" hidden></pre>
+    </div>
+  </section>
+
+  <!-- ================= Transcription ================= -->
+  <section class="view" id="view-transcription" hidden>
+    <div class="card">
+      <div class="label">Whisper on this PC</div>
+      <div class="form" id="tr-whisper"></div>
+      <div class="row-actions">
+        <button class="btn primary" id="tr-save" type="button">Save</button>
+        <button class="btn secondary" id="tr-undo" type="button">Undo changes</button>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-head"><div class="label">Computers running Whisper</div></div>
+      <p class="muted small">Each episode is transcribed whole on one computer, so several episodes are transcribed at once.
+        These computers only transcribe; the AI that finds ads is set in the AI tab. If one fails, its episode goes to another (in the end, this PC).</p>
+      <ul class="list" id="trs"></ul>
+      <div class="row-actions">
+        <select id="tr-kind" aria-label="Kind"><option value="speaches">speaches (faster-whisper)</option><option value="whispercpp">whisper.cpp server</option></select>
+        <input class="search" id="tr-addr" placeholder="Address, e.g. 192.168.1.20" aria-label="PC address">
+        <input class="search" id="tr-name" placeholder="Name (optional)" aria-label="PC name" style="width:150px">
+        <input class="search" id="tr-model" placeholder="Model (optional)" aria-label="Model" style="width:220px">
+        <button class="btn secondary" id="tr-add" type="button">Add PC</button>
+        <button class="btn ghost" id="tr-test" type="button">Test all</button>
+      </div>
+      <div class="row-actions">
+        <label class="small inline">This PC transcribes
+          <select id="tr-this"><option value="always">always</option><option value="when_others_busy">when the others are busy</option><option value="never">never (only if the others can't)</option></select></label>
+      </div>
+      <details class="help">
+        <summary class="small">How to set up another computer</summary>
+        <div class="muted small">
+          <p><b>speaches</b> (faster-whisper; best with an Nvidia GPU). With Docker:
+            <code>docker run --detach --restart unless-stopped --publish 8000:8000 --volume hf-hub-cache:/home/ubuntu/.cache/huggingface/hub --gpus=all ghcr.io/speaches-ai/speaches:latest-cuda</code>
+            (without an Nvidia GPU: the <code>latest-cpu</code> image, no <code>--gpus=all</code>). Podcast Cleaner asks it to download the Whisper model
+            the first time — the same one as this PC's Model setting, unless you type another (e.g. <code>Systran/faster-whisper-large-v3</code>).</p>
+          <p><b>whisper.cpp server</b> (AMD or Intel graphics via Vulkan, or CPU). Build it with build-whisper-vulkan.ps1, then run
+            <code>whisper-server -m ggml-large-v3-turbo-q5_0.bin --host 0.0.0.0 --port 8080</code>. The model is the one you start it with.</p>
+          <p>On each computer, allow the port (8000 or 8080) in Windows Firewall for your home network only.</p>
+        </div>
+      </details>
+    </div>
+  </section>
+
+  <!-- ================= Settings ================= -->
+  <section class="view" id="view-settings" hidden>
+    <div class="grid2">
+      <div class="stack">
+        <div class="card"><div class="label">General</div><div class="form" id="set-general"></div></div>
+      </div>
+      <div class="stack">
+        <div class="card"><div class="label">Other Settings</div><div class="form" id="set-other"></div></div>
+        <div class="card"><div class="label">Phone feeds</div><div class="form" id="set-feeds"></div></div>
+        <div class="card"><div class="label">Low Priority Hours</div><div class="form" id="set-low"></div></div>
+        <div class="card">
+          <div class="label">Phone Notifications</div>
+          <div class="form" id="set-phone"></div>
+          <div class="row-actions"><button class="btn secondary small" id="phone-test" type="button">Send a test</button>
+            <span class="muted small" id="phone-status">Uses the free ntfy app: subscribe to a topic name only you know.</span></div>
+        </div>
+      </div>
+    </div>
+    <div class="row-actions save-bar">
+      <button class="btn primary" id="set-save" type="button">Save settings</button>
+      <button class="btn secondary" id="set-undo" type="button">Undo changes</button>
+      <button class="btn ghost local" id="set-config" type="button" hidden>Edit config.yaml (all options)…</button>
+    </div>
+  </section>
+
+  <!-- ================= Log ================= -->
+  <section class="view" id="view-log" hidden>
+    <div class="card">
+      <div class="card-head">
+        <div class="label">Log</div>
+        <label class="small check"><input type="checkbox" id="log-problems"> Only problems</label>
+        <input class="search" id="log-search" type="search" placeholder="Filter" aria-label="Filter log">
+        <button class="btn ghost small local" id="log-open" type="button" hidden>Open log file</button>
+      </div>
+      <pre id="log"></pre>
+    </div>
+  </section>
+</main>
+
+<dialog id="dlg">
+  <form method="dialog" class="dlg-head">
+    <h2 id="dlg-title"></h2>
+    <button class="btn ghost icon" value="close" aria-label="Close">✕</button>
+  </form>
+  <div id="dlg-body"></div>
+</dialog>
+<dialog id="more-sheet" class="sheet">
+  <form method="dialog" class="dlg-head"><h2>More</h2><button class="btn ghost icon" value="close" aria-label="Close">✕</button></form>
+  <nav id="more-links"></nav>
+</dialog>
+<audio id="player" hidden></audio>
+<div id="toasts" aria-live="polite"></div>
+<script src="app.js"></script>
+<script src="pages.js"></script>
+</body>
+</html>

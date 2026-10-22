@@ -1,0 +1,63 @@
+[package]
+name = "podcast-ad-cleaner"
+version = "2.0.0"
+edition = "2021"
+description = "Watches podcast feeds, removes ads with Whisper + Ollama + ffmpeg, and serves ad-free feeds"
+license = "MIT"
+
+[[bin]]
+name = "PodcastAdCleaner"
+path = "src/main.rs"
+
+[features]
+default = ["whisper", "gui"]
+# Local speech-to-text with whisper.cpp (needs CMake + a C++ compiler to build)
+whisper = ["dep:whisper-rs"]
+# NVIDIA GPU transcription (needs the CUDA toolkit at build time)
+cuda = ["whisper", "whisper-rs/cuda"]
+# AMD/Intel/NVIDIA GPU via Vulkan (needs the Vulkan SDK at build time)
+vulkan = ["whisper", "whisper-rs/vulkan"]
+# Testing only: read transcripts from a JSON file instead of running Whisper
+fake-whisper = []
+# Window + system tray icon
+gui = ["dep:eframe", "dep:egui_extras", "dep:tray-icon", "dep:rfd", "dep:raw-window-handle"]
+
+[dependencies]
+anyhow = "1"
+thiserror = "2"
+clap = { version = "4", features = ["derive"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+serde_yaml = "0.9"
+chrono = { version = "0.4", features = ["serde"] }
+ureq = { version = "2", features = ["json", "tls"] }
+flate2 = "1"
+roxmltree = "0.20"
+encoding_rs = "0.8"
+regex = "1"
+once_cell = "1"
+url = "2"
+percent-encoding = "2"
+csv = "1"
+id3 = "1"
+log = { version = "0.4", features = ["std"] }
+tiny_http = "0.12"
+tempfile = "3"
+dirs = "6"
+unicode-normalization = "0.1"
+notify-rust = "4"
+image = { version = "0.25", default-features = false, features = ["png", "ico"] }
+whisper-rs = { version = "0.16", optional = true }
+eframe = { version = "0.31", optional = true, default-features = false, features = ["default_fonts", "glow", "persistence", "x11", "wayland"] }
+tray-icon = { version = "0.21", optional = true }
+rfd = { version = "0.15", optional = true }
+egui_extras = { version = "0.31", optional = true }
+raw-window-handle = { version = "0.6", optional = true }
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_System_Threading", "Win32_System_Console", "Win32_Security", "Win32_UI_WindowsAndMessaging"] }
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+strip = true
