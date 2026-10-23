@@ -4,6 +4,26 @@ A Windows system-tray port of [adamc199/podcast-ad-cleaner](https://github.com/a
 It watches a list of podcast RSS feeds, downloads new episodes, transcribes them with Whisper,
 finds ads with a local Ollama model, cuts them out with ffmpeg, and writes chapters into the MP3.
 
+## Screenshots
+
+The desktop window (pywebview) and the phone browser show the same pages.
+
+| Activity | Podcasts |
+|---|---|
+| ![Activity](screenshots/activity.png) | ![Podcasts](screenshots/podcasts.png) |
+
+| Found Ads | AI |
+|---|---|
+| ![Found Ads](screenshots/foundads.png) | ![AI](screenshots/ai.png) |
+
+| Transcription | Settings |
+|---|---|
+| ![Transcription](screenshots/transcription.png) | ![Settings](screenshots/settings.png) |
+
+| Stats |
+|---|
+| ![Stats](screenshots/stats.png) |
+
 ## What's new vs. the original
 
 | Original (bash, Linux/macOS) | This version (Python, Windows) |
