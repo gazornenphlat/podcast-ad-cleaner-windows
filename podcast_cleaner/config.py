@@ -47,6 +47,7 @@ DEFAULTS: dict = {
     "ollama": {
         "url": "http://localhost:11434",
         "model": "llama3.2:3b",
+        "think": False,          # let "thinking" models (Qwen3.x, Gemma 4...) think first: much slower
         "timeout_seconds": 300,
         "temperature": 0.1,
         "num_ctx": 8192,
@@ -77,6 +78,7 @@ DEFAULTS: dict = {
     },
     "lmstudio": {
         "url": "http://localhost:1234",
+        "think": False,          # as ollama.think
         "servers": [],
         "model": "",
         "api_token": "",
@@ -98,6 +100,9 @@ DEFAULTS: dict = {
         "max_hours_between_checks": 0,
     },
     "processing": {"overlap_stages": True, "prepare_ahead": 1,
+                   # transcription and ad-finding run independently: up to this many episodes transcribed and
+                   # waiting for ad-finding, and this many checked for ads at once (0 = one per AI computer, max 4)
+                   "transcribe_ahead": 4, "analyze_parallel": 0,
                    # new episodes of LOW-priority shows are only started between these times
                    "low_priority_hours": {"enabled": False, "start": "01:00", "end": "06:00"}},
     "ad_removal": {

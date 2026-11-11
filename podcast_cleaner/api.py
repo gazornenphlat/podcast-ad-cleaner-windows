@@ -46,6 +46,7 @@ ACTIONS = {
     "skip_episode": ("skip_episode", ("folder", "guid", "title")),
     "reanalyze_episode": ("reanalyze_episode", ("folder", "guid", "title")),
     "set_queue_order": ("set_queue_order", ("keys",)),
+    "reprocess": ("reprocess_episodes", ("items", "later")),
     "start_now": ("start_now", ("keys",)),
     "clean_files": ("clean_files", ("paths",)),
     "review_held": ("review_held", ("items", "verdict")),
@@ -56,6 +57,10 @@ WEB_TYPES = {".html": "text/html; charset=utf-8", ".js": "text/javascript; chars
              ".css": "text/css; charset=utf-8", ".svg": "image/svg+xml", ".png": "image/png",
              ".ttf": "font/ttf", ".woff2": "font/woff2", ".json": "application/json", ".ico": "image/x-icon",
              ".webmanifest": "application/manifest+json"}
+
+
+# Things only this PC may do. Other devices (phones, other PCs on the network) may still use the pages, but not these.
+LOCAL_ONLY_ACTIONS = {"quit", "clean_files"}
 
 
 def _jsonable(v):
@@ -351,7 +356,8 @@ def handle(handler, engine: Engine | None, method: str, parts: list[str], query:
             if what == "podcasts":
                 return reply(engine.podcasts())
             if what == "episodes":
-                return reply(engine.episodes(query.get("show", [""])[0]))
+                return reply(engine.episodes(query.get("show", [""])[0],
+                                             min(5000, int(query.get("limit", ["100"])[0] or 100))))
             if what == "found-ads":
                 return reply(engine.found_ads())
             if what == "stats":
@@ -377,6 +383,8 @@ def handle(handler, engine: Engine | None, method: str, parts: list[str], query:
             if not isinstance(args, dict):
                 return reply({"error": "body must be a JSON object"}, 400)
             if len(parts) == 3 and parts[1] == "action":
+                if parts[2] in LOCAL_ONLY_ACTIONS and not local:
+                    return reply({"error": "only this PC can do that"}, 403)
                 try:
                     return reply({"ok": True, "result": engine.action(parts[2], args)})
                 except KeyError:
@@ -611,6 +619,9 @@ class RemoteWorker:
 
     def reanalyze_episode(self, folder, guid, title=""):
         return self._act("reanalyze_episode", folder=folder, guid=guid, title=title)
+
+    def reprocess_episodes(self, items, later=True):
+        return int(self._act("reprocess", items=list(items), later=bool(later)) or 0)
 
     def set_queue_order(self, keys):
         return self._act("set_queue_order", keys=list(keys))

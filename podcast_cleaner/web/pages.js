@@ -314,7 +314,7 @@ function renderAIForm(svc) {
     rows += `<label class="k">This PC</label><div class="v"><input id="ai-oll-url" value="${esc(d.ollama.url || "")}" style="width:260px"><span class="muted small">Ollama's address on this PC</span></div>
       <label class="k">Model</label><div class="v"><input id="ai-oll-model" value="${esc(d.ollama.model || "")}" list="ai-dl" style="width:260px"><datalist id="ai-dl">${models}</datalist>
       <button class="btn ghost small" id="ai-models" type="button" title="List installed models">↻</button></div>
-      <div class="hint">The same model is used on every Ollama PC.</div>`;
+      <div class="hint">The same model is used on every Ollama PC.</div>${thinkRow(d)}`;
   } else if (svc === "lmstudio") {
     const ld = lms.load || {};
     rows += `<label class="k">This PC</label><div class="v"><input id="ai-lms-url" value="${esc(lms.url || "http://localhost:1234")}" style="width:220px">
@@ -326,7 +326,7 @@ function renderAIForm(svc) {
         <span class="muted small">Context</span><input type="number" id="ai-lms-ctx" step="2048" min="2048" value="${esc(ld.context_length ?? 8192)}">
         <label class="check"><input type="checkbox" id="ai-lms-flash" ${ld.flash_attention !== false ? "checked" : ""}> flash attention</label>
         <label class="check"><input type="checkbox" id="ai-lms-kv" ${ld.offload_kv_cache_to_gpu !== false ? "checked" : ""}> cache on GPU</label></div>
-      <label class="k">Sections at once</label><div class="v"><input type="number" id="ai-par" min="1" max="16" value="${esc(ld.parallel ?? 4)}"></div>`;
+      <label class="k">Sections at once</label><div class="v"><input type="number" id="ai-par" min="1" max="16" value="${esc(ld.parallel ?? 4)}"></div>${thinkRow(d)}`;
   } else {
     rows += (svc === "compatible" ? `<label class="k">API address</label><div class="v"><input id="ai-url" value="${esc(cloud.base_url)}" style="width:100%" placeholder="https://api.groq.com/openai/v1"></div>` : "")
       + `<label class="k">API key</label><div class="v"><input type="password" id="ai-key" value="${cloud.has_key ? "********" : ""}" style="width:300px"></div>
@@ -351,14 +351,21 @@ function renderAIForm(svc) {
     } catch (e) { aiStatus(e.message, false); }
   };
 }
+function thinkRow(d) {
+  return `<label class="k">Thinking</label><div class="v"><label class="check"><input type="checkbox" id="ai-think" ${d.think ? "checked" : ""}>
+    let "thinking" models think before answering</label></div>
+    <div class="hint">Leave off: models like Qwen3 and Gemma 4 then answer straight away. Thinking makes every section
+    several times slower and rarely finds more ads. Other models aren't affected.</div>`;
+}
 function aiStatus(text, ok) { const el = $("#ai-status"); el.textContent = text; el.className = `small ${ok === true ? "ok" : ok === false ? "bad" : "muted"}`; }
 function aiArgs() {
   const svc = $("#ai-svc").value, v = (id) => $(id) ? $(id).value : undefined;
-  if (svc === "ollama") return { service: svc, url: v("#ai-oll-url"), ollama: { url: v("#ai-oll-url"), model: v("#ai-oll-model") } };
+  const think = $("#ai-think") ? $("#ai-think").checked : undefined;
+  if (svc === "ollama") return { service: svc, think, url: v("#ai-oll-url"), ollama: { url: v("#ai-oll-url"), model: v("#ai-oll-model") } };
   if (svc === "lmstudio") {
     const lm = { url: v("#ai-lms-url"), api_token: v("#ai-lms-token"), model: v("#ai-lms-model"),
       load: { gpu: v("#ai-lms-gpu"), context_length: Number(v("#ai-lms-ctx") || 8192), flash_attention: $("#ai-lms-flash").checked, offload_kv_cache_to_gpu: $("#ai-lms-kv").checked } };
-    return { service: svc, ...lm, lmstudio: lm, parallel: Number(v("#ai-par") || 4) };
+    return { service: svc, think, ...lm, lmstudio: { ...lm, think }, parallel: Number(v("#ai-par") || 4) };
   }
   return { service: svc, api_key: v("#ai-key"), model: v("#ai-model"), base_url: v("#ai-url"), fallback: $("#ai-fallback").checked, parallel: Number(v("#ai-par") || 4) };
 }
@@ -510,7 +517,9 @@ const SET = {
   other: [
     { key: "output.crossfade_ms", label: "Crossfade at cuts", type: "number", min: 0, max: 500, after: "milliseconds, 0 = hard cut" },
     { key: "output.archive_transcripts", label: "Transcripts", type: "check", text: "keep one for every episode" },
-    { key: "processing.overlap_stages", label: "Overlap", type: "check", text: "transcribe the next episode meanwhile" },
+    { key: "processing.overlap_stages", label: "Overlap", type: "check", text: "transcribe and find ads at the same time" },
+    { key: "processing.transcribe_ahead", label: "Transcribe ahead", type: "number", min: 1, max: 50, after: "episodes waiting for ad-finding, at most" },
+    { key: "processing.analyze_parallel", label: "Find ads in", type: "number", min: 0, max: 8, after: "episodes at once (0 = one per AI computer)" },
     { key: "output.normalize.enabled", label: "Volume", type: "check", text: "even out loudness (podcast standard, -16 LUFS)" },
   ],
   feeds: [

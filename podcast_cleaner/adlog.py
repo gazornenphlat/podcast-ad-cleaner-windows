@@ -1,8 +1,8 @@
-"""Permanent history of every ad cut, across all podcasts: <output_dir>/ads.csv.
+"""Permanent history of every ad cut, across all podcasts: the ads table in podcast-cleaner.db.
 
-One row per removed ad. Opens in Excel. The user can mark rows as "not an ad" from the
-window; that feedback is fed back into the AI prompt, as is the list of sponsors seen on
-any show (the "global sponsor list").
+One row per removed ad. Found Ads > Download ads.csv gives a copy for Excel. The user can mark rows as
+"not an ad"; that feedback is fed back into the AI prompt, as is the list of sponsors seen on any show
+(the "global sponsor list"). Older versions kept this in <output_dir>/ads.csv - it is imported once.
 """
 from __future__ import annotations
 
@@ -16,7 +16,7 @@ from pathlib import Path
 
 import logging
 
-from .utils import atomic_write_text, parse_timestamp
+from .utils import parse_timestamp
 
 log = logging.getLogger(__name__)
 
@@ -109,103 +109,128 @@ def _typed(r: dict) -> dict:
     return r
 
 
+_cache: dict = {}
+COLS = ", ".join(f'"{f}"' for f in FIELDS)          # quoted: "end" is a word SQLite reserves
+
+
+def _cell(field: str, v):
+    """A CSV value as stored in the database."""
+    if field == "id":
+        return int(v)
+    if field in ("start", "end", "seconds"):
+        return _seconds(v)
+    if field == "confidence":
+        try:
+            return float(v) if str(v).strip() else None
+        except ValueError:
+            return None
+    return "" if v is None else str(v)
+
+
 class AdLog:
-    FILENAME = "ads.csv"
+    """The ad history, in the database (table ads). Same interface as when it was ads.csv.
+    An old ads.csv in the output folder is imported the first time and renamed ads.csv.migrated;
+    export_csv() makes a CSV for Excel whenever you want one."""
+    FILENAME = "ads.csv"            # the old file (imported once) and the name used for exports
 
     def __init__(self, output_dir: Path):
-        self.path = Path(output_dir) / self.FILENAME
-        self._cache: tuple[tuple, list[dict]] | None = None
+        from . import db
+        self.output_dir = Path(output_dir)
+        self.path = self.output_dir / self.FILENAME
+        self.db = db.get(output_dir)
+        self._migrate()
+
+    def _migrate(self) -> None:
+        if not self.path.is_file():
+            return
+        with _lock:
+            if not self.path.is_file():
+                return
+            try:
+                rows = _normalise(_parse(_decode(self.path.read_bytes())))
+            except Exception as e:  # noqa: BLE001
+                log.warning("Couldn't import %s (%s) - left as it is", self.path.name, e)
+                return
+            with self.db.tx() as c:
+                if c.execute("SELECT COUNT(*) FROM ads").fetchone()[0] == 0:
+                    c.executemany(f"INSERT INTO ads ({COLS}) VALUES ({', '.join('?' * len(FIELDS))})",
+                                  [tuple(_cell(f, r.get(f)) for f in FIELDS) for r in rows])
+            try:
+                self.path.replace(self.path.with_name(self.path.name + ".migrated"))
+                log.info("Moved %d ad(s) from ads.csv into the database", len(rows))
+            except OSError as e:
+                log.warning("Imported ads.csv but couldn't rename it (%s) - it isn't used any more", e)
 
     # ---------- reading ----------
     def rows(self) -> list[dict]:
-        """All rows, cleaned up. Never raises - a damaged or hand-edited file just gives what can be read."""
+        """All rows, oldest first. Never raises."""
         try:
-            st = self.path.stat()
-            key = (st.st_mtime_ns, st.st_size)
-        except OSError:
-            return []
-        if self._cache and self._cache[0] == key:
-            return self._cache[1]
-        try:
-            with _lock:
-                raw = self._load(strict=False)
-            rows = [_typed(r) for r in raw]
+            ver = self.db.version()
+            hit = _cache.get(str(self.db.path))
+            if hit and hit[0] == ver:
+                return hit[1]
+            cur = self.db.conn().execute(f"SELECT {COLS} FROM ads ORDER BY id")
+            rows = []
+            for rec in cur:
+                r = {f: ("" if v is None else v) for f, v in zip(FIELDS, rec)}
+                r["id"] = str(r["id"])
+                for f in ("start", "end", "seconds"):
+                    r[f] = float(r[f] or 0)
+                if not r["seconds"]:
+                    r["seconds"] = max(0.0, r["end"] - r["start"])
+                r["confidence"] = "" if r["confidence"] in ("", None) else f"{float(r['confidence']):.2f}"
+                rows.append(r)
+            _cache[str(self.db.path)] = (ver, rows)
+            return rows
         except Exception as e:  # noqa: BLE001 - the ad history must never break processing
-            log.warning("Could not read %s (%s) - ignoring it for now", self.path.name, e)
-            return self._cache[1] if self._cache else []
-        self._cache = (key, rows)
-        return rows
-
-    def _load(self, strict: bool) -> list[dict]:
-        """Read and normalise the file (any encoding, delimiter, missing columns, missing/duplicate ids).
-
-        strict=True is used before rewriting the file: if it exists but can't be opened (e.g. Excel has
-        it locked) this raises instead of returning [], so the history is never overwritten with nothing."""
-        if not self.path.exists():
-            return []
-        try:
-            data = self.path.read_bytes()
-        except OSError:
-            if strict:
-                raise
-            return []
-        try:
-            return _normalise(_parse(_decode(data)))
-        except csv.Error as e:
-            if not strict:
-                raise
-            backup = self.path.with_name(f"ads.unreadable-{datetime.now():%Y%m%d-%H%M%S}.csv")
-            self.path.replace(backup)
-            log.warning("ads.csv was damaged (%s); kept it as %s and started a new one", e, backup.name)
+            log.warning("Could not read the ad history (%s)", e)
             return []
 
-    # ---------- writing ----------
-    def _write_all(self, rows: list[dict]) -> None:
+    def export_csv(self) -> bytes:
+        """The whole history as a CSV for Excel (UTF-8 with BOM so accents show correctly)."""
         buf = io.StringIO()
         w = csv.DictWriter(buf, fieldnames=FIELDS, extrasaction="ignore", lineterminator="\r\n")
         w.writeheader()
-        for r in rows:
+        for r in self.rows():
             w.writerow(r)
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        # utf-8-sig so Excel shows names with accents correctly
-        atomic_write_text(self.path, "﻿" + buf.getvalue())
-        self._cache = None
+        return ("\ufeff" + buf.getvalue()).encode("utf-8")
 
+    def write_export(self) -> Path | None:
+        """A fresh copy for Excel: <output>/ads-export.csv (a dated name if that one is open in Excel)."""
+        data = self.export_csv()
+        for name in ("ads-export.csv", f"ads-export-{datetime.now():%Y%m%d-%H%M%S}.csv"):
+            p = self.output_dir / name
+            try:
+                p.write_bytes(data)
+                return p
+            except OSError:
+                continue
+        return None
+
+    # ---------- writing ----------
     def add_episode(self, podcast: str, episode: str, published: str, ads: list[dict], excerpts: list[str],
                     replace: bool = False) -> None:
-        """Append this episode's ads. With replace (re-analysis), its earlier AI/feed rows are dropped
-        first - but rows you marked 'not an ad' are kept, so your corrections aren't lost."""
+        """Add this episode's ads. With replace (re-analysis), its earlier rows are dropped first - but rows
+        you marked 'not an ad' are kept, so your corrections aren't lost."""
         if not ads and not replace:
             return
-        with _lock:
-            existing = self._read_raw()
+        now = datetime.now().isoformat(timespec="seconds")
+        with self.db.tx() as c:
             if replace:
-                existing = [r for r in existing
-                            if not (r.get("podcast") == podcast and r.get("episode") == episode
-                                    and r.get("status") != "not_ad")]
-            next_id = max((int(r["id"]) for r in existing), default=0) + 1
-            now = datetime.now().isoformat(timespec="seconds")
+                c.execute("DELETE FROM ads WHERE podcast=? AND episode=? AND status!='not_ad'", (podcast, episode))
             for i, a in enumerate(ads):
-                existing.append({
-                    "id": next_id + i, "processed": now, "podcast": podcast, "episode": episode,
-                    "published": (published or "")[:10], "start": round(a["start"], 1), "end": round(a["end"], 1),
-                    "seconds": round(a["end"] - a["start"], 1), "sponsor": a.get("label", ""),
-                    "found_by": a.get("source", ""), "status": "ad",
-                    "excerpt": (excerpts[i] if i < len(excerpts) else "")[:400],
-                    "confidence": f"{a['confidence']:.2f}" if "confidence" in a and "ai" in a.get("source", "") else "",
-                })
-            self._write_all(existing)
+                c.execute("INSERT INTO ads (processed, podcast, episode, published, start, \"end\", seconds, sponsor, "
+                          "found_by, status, excerpt, confidence) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+                          (now, podcast, episode, (published or "")[:10], round(a["start"], 1), round(a["end"], 1),
+                           round(a["end"] - a["start"], 1), a.get("label", ""), a.get("source", ""), "ad",
+                           (excerpts[i] if i < len(excerpts) else "")[:400],
+                           round(float(a["confidence"]), 2) if "confidence" in a and "ai" in a.get("source", "")
+                           else None))
 
     def set_status(self, ids: set[str], status: str) -> None:
-        with _lock:
-            rows = self._read_raw()
-            for r in rows:
-                if str(r.get("id")) in ids:
-                    r["status"] = status
-            self._write_all(rows)
-
-    def _read_raw(self) -> list[dict]:
-        return self._load(strict=True)
+        status = "not_ad" if status == "not_ad" else "ad"
+        with self.db.tx() as c:
+            c.executemany("UPDATE ads SET status=? WHERE id=?", [(status, int(i)) for i in ids if str(i).isdigit()])
 
     # ---------- summaries used by the prompt and the window ----------
     def sponsor_stats(self) -> dict[str, dict]:

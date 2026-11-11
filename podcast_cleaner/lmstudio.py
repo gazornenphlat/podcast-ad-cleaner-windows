@@ -191,6 +191,12 @@ def ask(url: str, model: str, lcfg: dict, system: str, prompt: str, timeout: flo
             "messages": [{"role": "system", "content": system}, {"role": "user", "content": prompt}],
             "response_format": {"type": "json_schema",
                                 "json_schema": {"name": "answer", "schema": schema or ANSWER_SCHEMA}}}
+    if not lcfg.get("think", False):
+        # Switch off thinking for models that have it: the chat-template flag (Qwen3.x, others), and Qwen3's own
+        # "/no_think" word. Servers and models that don't know them ignore them.
+        body["chat_template_kwargs"] = {"enable_thinking": False}
+        if "qwen3" in model.lower().replace("-", "").replace("_", ""):
+            body["messages"][1]["content"] = prompt + "\n/no_think"
     if not should_continue():
         raise Cancelled()
     t0 = time.monotonic()
@@ -202,7 +208,8 @@ def ask(url: str, model: str, lcfg: dict, system: str, prompt: str, timeout: flo
         raise LMStudioError(f"HTTP {r.status_code}: {r.text[:200]}")
     j = r.json()
     text = ((j.get("choices") or [{}])[0].get("message") or {}).get("content") or ""
-    text = re.sub(r"<think>.*?</think>", "", text, flags=re.S)       # reasoning models
+    from .analyze import strip_thinking
+    text = strip_thinking(text)                                         # reasoning models
     u = j.get("usage") or {}
     tin, tout = int(u.get("prompt_tokens", 0)), int(u.get("completion_tokens", 0))
     if tout:

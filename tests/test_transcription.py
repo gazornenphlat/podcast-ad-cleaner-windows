@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import threading
 import time
+from pathlib import Path
 
 from conftest import needs_ffmpeg, state_of
 from test_pipeline import acme_ai, setup_show, text_at
@@ -112,3 +113,38 @@ def test_failing_computer_hands_back(server, make_cfg, audio, stub_ai, fake_whis
     r, act = run_cycle(cfg)
     assert r.processed == ["Test Show - Ep 1"] and not r.failed
     assert len(seen) == 1 and local["runs"] == 1           # tried the other computer, then did it here
+
+
+def test_transcribing_and_ad_finding_are_independent(server, make_cfg, audio, stub_ai, fake_whisper, run_cycle):
+    """One group of computers only transcribes, another only finds ads: three episodes are transcribed on the
+    transcribing computers while two AI computers check two episodes at the same time."""
+    local = fake_whisper(text_at)
+    seen = []
+    t1, t2 = server(speaches_stub(seen)), server(speaches_stub(seen))
+    active, peak, lock = [0], [0], threading.Lock()
+
+    def slow_ai(prompt):
+        with lock:
+            active[0] += 1
+            peak[0] = max(peak[0], active[0])
+        time.sleep(1.5)
+        with lock:
+            active[0] -= 1
+        return acme_ai()(prompt)
+    ai, ai2 = stub_ai(slow_ai), stub_ai(slow_ai)
+    items = [{"guid": f"e{i}", "title": f"Ep {i}", "audio": "/ep.mp3", "pub": f"Mon, 1{i} Oct 2026 10:00:00 GMT"}
+             for i in (1, 2, 3)]
+    extra = (f'transcription: {{this_pc: never, servers: [{{url: "{t1.url}", kind: speaches}}, '
+             f'{{url: "{t2.url}", kind: speaches}}]}}\n'
+             f'ollama: {{url: "http://127.0.0.1:9", chunk_minutes: 10, this_pc: never, '
+             f'servers: [{{url: "{ai.url}"}}, {{url: "{ai2.url}"}}]}}')
+    cfg, _ = setup_show(server, make_cfg, audio, ai, items=items, extra_cfg=extra,
+                        podcast_extra="    initial_episodes: 3\n")
+    r, act = run_cycle(cfg)
+    assert sorted(r.processed) == ["Test Show - Ep 1", "Test Show - Ep 2", "Test Show - Ep 3"] and not r.failed
+    assert local["runs"] == 0 and len(seen) == 3          # all transcribed by the transcribing computers
+    assert peak[0] >= 2                                    # two episodes checked for ads at the same time
+    st = state_of(cfg, "Test Show")["episodes"]
+    assert all(e["status"] == "done" and e["ads_removed"] == 1 for e in st.values())
+    folder = Path(cfg["output_dir"]) / "Test Show"
+    assert len(list(folder.glob("*.mp3"))) == 3            # each episode's file written (one show, one at a time)

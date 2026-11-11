@@ -185,6 +185,25 @@ class Worker(threading.Thread):
         if not self.busy:
             self.check_now(force=False)
 
+    def reprocess_episodes(self, items: list[dict], later: bool = True) -> int:
+        """Process several finished episodes again (download, transcribe, find ads, cut) with the current
+        settings. later: they wait their turn behind new episodes; otherwise they go next."""
+        if not self.cfg:
+            return 0
+        store = DownloadRequests(self.cfg["output_dir"])
+        n = 0
+        for it in items:
+            if it.get("folder") and it.get("guid"):
+                n += store.add(it["folder"], it["guid"], it.get("title", ""), "reprocess" if later else "reanalyze")
+        log.info("Re-process requested for %d episode(s) (%s)", n, "later" if later else "next")
+        if n:
+            self.requests_waiting = True
+            self._refresh_now = True
+            self.on_change()
+            if not self.busy and not self.paused:
+                self.check_now(force=False)
+        return n
+
     def start_now(self, keys: list[str]) -> None:
         """Up next > Start now: these go first (also outside low-priority hours), and processing starts -
         resuming if paused. With an episode already being processed, they're next."""

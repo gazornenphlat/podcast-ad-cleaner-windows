@@ -290,3 +290,43 @@ def test_transcription_computers(engine):
     assert e.worker.cfg["transcription"]["this_pc"] == "when_others_busy"
     api.call(base, "/api/do/transcriber_remove", {"url": "http://192.168.7.7:8080"})
     assert len(api.call(base, "/api/transcribers")["machines"]) == 2
+
+
+def test_thinking_switch_saved_for_both_local_services(engine):
+    e, base, cfg = engine
+    assert api.call(base, "/api/ai")["think"] is False                       # off by default
+    api.call(base, "/api/do/ai_save", {"service": "ollama", "think": True, "ollama": {}})
+    assert e.worker.cfg["ollama"]["think"] is True and e.worker.cfg["lmstudio"]["think"] is True
+    assert api.call(base, "/api/ai")["think"] is True
+
+
+@pytest.fixture
+def from_other_device(monkeypatch):
+    """Make the requests look like they come from another device on the home network."""
+    monkeypatch.setattr(api, "_is_local", lambda address: False)
+
+
+def _refused(base, path, data):
+    with pytest.raises(urllib.error.HTTPError) as err:
+        post(base, path, data)
+    return err.value.code
+
+
+def test_this_pc_can_quit(engine):
+    e, base, _ = engine
+    quit_called = []
+    e.on_quit = lambda: quit_called.append(True)
+    assert post(base, "/api/action/quit", {})["ok"]
+    time.sleep(0.5)                       # quit runs on a short timer
+    assert quit_called == [True]
+
+
+def test_other_devices_cannot_quit_or_clean_files(engine, from_other_device):
+    e, base, _ = engine
+    quit_called = []
+    e.on_quit = lambda: quit_called.append(True)
+    assert _refused(base, "/api/action/quit", {}) == 403
+    assert _refused(base, "/api/action/clean_files", {"paths": ["C:/x.mp3"]}) == 403
+    time.sleep(0.5)
+    assert quit_called == []
+

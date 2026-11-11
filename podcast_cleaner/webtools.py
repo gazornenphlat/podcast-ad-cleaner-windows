@@ -256,7 +256,8 @@ class Tools:
                          "model": own.get("model") or info["model"], "base_url": own.get("base_url") or "",
                          "keys": info.get("keys") or ""}
         lc = cfg.get("lmstudio") or {}
-        return {"service": ai.get("service", "ollama"), "services": svcs, "fallback": ai.get("fallback_to_ollama", True),
+        return {"service": ai.get("service", "ollama"), "services": svcs,
+                "think": bool(cfg["ollama"].get("think", False) or lc.get("think", False)), "fallback": ai.get("fallback_to_ollama", True),
                 "parallel": ai.get("parallel", 4), "cloud": clouds,
                 "ollama": {"url": cfg["ollama"].get("url"), "model": cfg["ollama"].get("model"),
                            "this_pc": cfg["ollama"].get("this_pc", "when_idle")},
@@ -364,6 +365,9 @@ class Tools:
 
         def fn(ed):
             ed.set("ai.service", svc)
+            if "think" in a:                       # one switch for both local services
+                ed.set("ollama.think", bool(a["think"]))
+                ed.set("lmstudio.think", bool(a["think"]))
             if (a.get("ollama") or {}).get("url"):
                 ed.set("ollama.url", a["ollama"]["url"].strip())
             if (a.get("ollama") or {}).get("model"):
@@ -802,8 +806,11 @@ class Tools:
             path = Path(cfg["log_file"])
         elif what == "config":
             path = Path(self.worker.cfg_path)
-        elif what == "ads_csv":
-            path = Path(cfg["output_dir"]) / "ads.csv"
+        elif what == "ads_csv":                       # a fresh copy of the ad history, opened in Excel
+            from .adlog import AdLog
+            path = AdLog(cfg["output_dir"]).write_export()
+            if path is None:
+                raise Problem("Couldn't write ads-export.csv - is it open in Excel?")
         elif what == "show":
             path = self._folder(a.get("name") or "")
         elif what == "episode":
@@ -885,8 +892,8 @@ def handle(tools: Tools, handler, method: str, parts: list[str], query: dict, ar
                 base = fs.base_url() if fs else ""
                 return _download(handler, tools.opml_export(query, base), "podcasts.opml", "text/x-opml")
             if what == "ads-csv":
-                path = Path(tools.cfg["output_dir"]) / "ads.csv"
-                return _download(handler, path.read_bytes() if path.exists() else b"", "ads.csv", "text/csv")
+                from .adlog import AdLog
+                return _download(handler, AdLog(tools.cfg["output_dir"]).export_csv(), "ads.csv", "text/csv")
             if what == "system":
                 return reply(tools.get_system(query, local))
             fn = getattr(tools, f"get_{what.replace('-', '_')}", None)

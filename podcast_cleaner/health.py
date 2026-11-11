@@ -50,14 +50,6 @@ def run(cfg: dict, feed_server=None, progress=lambda msg: None) -> list[Item]:
         size = sum(f.stat().st_size for f in tmp.rglob("*") if f.is_file()) / 1e9
         if size > 2:
             add(WARN, "Temporary files", f"{size:.1f} GB in {tmp}", "Quit the app and delete that folder.")
-    adcsv = od / "ads.csv"
-    if adcsv.exists():
-        try:
-            with open(adcsv, "a", encoding="utf-8"):
-                pass
-            add(OK, "ads.csv", "can be written")
-        except OSError:
-            add(WARN, "ads.csv", "is locked", "Close ads.csv in Excel - new ads can't be recorded while it's open.")
 
     # ---- tools ----
     progress("Checking ffmpeg")

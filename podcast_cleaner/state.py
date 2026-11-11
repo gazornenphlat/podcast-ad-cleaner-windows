@@ -177,8 +177,9 @@ class DownloadRequests:
         return [r for r in self.all() if r.get("action") == "skip"]
 
     def reanalyses(self) -> list[dict]:
-        """Re-analyze (download again) and re-cut (from the kept original, after you approved held ads)."""
-        return [r for r in self.all() if r.get("action") in ("reanalyze", "recut")]
+        """Re-analyze (download again, next in line), re-process (the same, but waits its turn) and re-cut
+        (from the kept original, after you approved held ads)."""
+        return [r for r in self.all() if r.get("action") in ("reanalyze", "recut", "reprocess")]
 
     def contains(self, folder: str, guid: str) -> bool:
         return any(r["folder"] == folder and r["guid"] == guid for r in self.all())

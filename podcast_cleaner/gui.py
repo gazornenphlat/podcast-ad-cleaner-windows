@@ -914,7 +914,7 @@ class MainWindow(ExtraMixin):
         self.var_ads_hide = tk.BooleanVar(value=False)
         ttk.Checkbutton(top, text="Hide 'not an ad'", variable=self.var_ads_hide,
                         command=lambda: self.refresh_ads(force=True)).pack(side="left")
-        ttk.Button(top, text="Open ads.csv", command=self.open_ads_csv).pack(side="right")
+        ttk.Button(top, text="Open in Excel", command=self.open_ads_csv).pack(side="right")
         mb_learn = ttk.Menubutton(top, text="Learned ads")
         menu = tk.Menu(mb_learn, tearoff=False)
         menu.add_command(label="Share (export)...", command=self.export_learned)
@@ -1170,19 +1170,20 @@ class MainWindow(ExtraMixin):
                 {key_for(r.get("podcast", ""), r.get("episode", ""), r["start"]) for r in rows},
                 "not_ad" if status == "not_ad" else "ad")
         except OSError as e:
-            messagebox.showerror("Ads", f"Couldn't save the change - is ads.csv open in Excel? Close it and "
-                                        f"try again.\n\n{e}", parent=self.root)
+            messagebox.showerror("Ads", f"Couldn't save the change:\n\n{e}", parent=self.root)
             return
         self.refresh_ads(force=True)
 
     def open_ads_csv(self) -> None:
         if not self.cfg:
             return
-        p = AdLog(self.cfg["output_dir"]).path
-        if p.exists():
-            _open(p)
-        else:
+        log_ = AdLog(self.cfg["output_dir"])
+        if not log_.rows():
             messagebox.showinfo("Ads", "No ads recorded yet.", parent=self.root)
+            return
+        p = log_.write_export()
+        if p:
+            _open(p)
 
     # ------------------------------------------------------------ Podcasts tab
     def _build_podcasts(self, tab: ttk.Frame) -> ttk.Frame:

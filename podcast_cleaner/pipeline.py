@@ -39,6 +39,7 @@ class Job:
     state: PodcastState
     reanalyze: bool = False   # user asked to process an already-finished episode again
     recut: bool = False       # re-cut from the kept original after you approved held ads (no download, no AI)
+    later: bool = False       # re-process "later": waits its turn instead of going to the front of Up next
 
 
 @dataclass
@@ -225,7 +226,9 @@ def find_new_episodes(cfg: dict, session, hooks: Hooks, states: dict | None = No
                         consumed.add((folder.name, r["guid"]))
                         continue
                     recut = r.get("action") == "recut"
-                    priority.append(Job(podcast, feed, ep, folder, state, reanalyze=True, recut=recut))
+                    later = r.get("action") == "reprocess"
+                    (jobs if later else priority).append(Job(podcast, feed, ep, folder, state, reanalyze=True,
+                                                             recut=recut, later=later))
                     log.info("%s: %s '%s'", name, "re-cutting (approved ads)" if recut else "re-analyzing",
                              ep.title)
         except Exception as e:
@@ -427,7 +430,7 @@ def _apply_retention(job: Job) -> None:
 def _prompt_sponsors(cfg: dict, job: Job) -> tuple[list[str], list[str], list[str], list[str]]:
     """Sponsor names for the AI prompt: (always watch for, this show's, all shows', not ads).
 
-    Never raises - a problem with ads.csv or a state file just leaves that list out."""
+    Never raises - a problem with the ad history or a state file just leaves that list out."""
     ocfg = cfg["ollama"]
     watch = [" ".join(str(x).split()) for x in (ocfg.get("watch_sponsors") or []) if str(x).strip()]
     watch = list(dict.fromkeys(watch))
@@ -846,6 +849,7 @@ def finish_episode(cfg: dict, job: Job, prep: Prepared, session, ollama_ok: bool
     step = _stepper(job, hooks)
     work, original, duration, segments = prep.work, prep.original, prep.duration, prep.segments
     pub_chapters, pub_ads, started = prep.pub_chapters, prep.pub_ads, prep.started
+    show_lock = None
     try:
         acfg = cfg["ad_removal"]
         out_dir = cfg["output_dir"]
@@ -885,8 +889,11 @@ def finish_episode(cfg: dict, job: Job, prep: Prepared, session, ollama_ok: bool
                                         float(ccfg["fallback_interval_minutes"]))
         clean_segments = media.remap_segments(segments, heard)
 
-        # 7. tag
+        # 7. tag. Two episodes of one show can be finishing at once (independent stages): only one writes
+        # into the show's folder at a time (the assets folder is cleared for each new episode).
         step("writing files")
+        show_lock = _show_lock(job.folder)
+        show_lock.acquire()
         when = ep.published.astimezone() if ep.published else datetime.now()
         date_str = when.strftime("%Y-%m-%d")                     # ID3 date tag (must be year-month-day)
         ocfg_out = cfg["output"]
@@ -955,7 +962,7 @@ def finish_episode(cfg: dict, job: Job, prep: Prepared, session, ollama_ok: bool
         job.state.record_sponsors([a["label"] for a in ai_ads if (a.get("kind") or "sponsor") in AD_KINDS
                                    if media.in_ad((a["start"] + a["end"]) / 2, ads)])
 
-        # Permanent ad history for all podcasts (ads.csv) - also feeds the global sponsor list.
+        # Permanent ad history for all podcasts (the ads table) - also feeds the global sponsor list.
         try:
             excerpts = [" ".join(s.text for s in segments if a["start"] <= (s.start + s.end) / 2 < a["end"])
                         for a in ads]
@@ -963,7 +970,7 @@ def finish_episode(cfg: dict, job: Job, prep: Prepared, session, ollama_ok: bool
                 podcast_name, ep.title, ep.published.isoformat() if ep.published else "", ads, excerpts,
                 replace=job.reanalyze)
         except Exception as e:  # noqa: BLE001 - the history must never fail an episode
-            log.warning("Could not update ads.csv (is it open in Excel?): %s", e)
+            log.warning("Could not update the ad history: %s", e)
 
         # Learn the words of the ads that were cut, so repeat reads are found without the AI.
         if acfg.get("learn_ads", True) and segments and prep.recut is None:
@@ -1017,7 +1024,18 @@ def finish_episode(cfg: dict, job: Job, prep: Prepared, session, ollama_ok: bool
             _apply_retention(job)
         return {"file": final, "ads": len(ads), "removed": removed, "gaps": gaps, "held": len(held)}
     finally:
+        if show_lock is not None:
+            show_lock.release()
         shutil.rmtree(work, ignore_errors=True)
+
+
+_show_locks: dict[str, threading.Lock] = {}
+_show_locks_guard = threading.Lock()
+
+
+def _show_lock(folder: Path) -> threading.Lock:
+    with _show_locks_guard:
+        return _show_locks.setdefault(str(folder).lower(), threading.Lock())
 
 
 def _report(podcast, ep, duration, clean, ads, chapters, base, elapsed, ai, feed_chapters, gaps=(),
@@ -1095,7 +1113,7 @@ def _job_item(job: Job) -> dict:
     return {"podcast": job.podcast["name"], "title": ep.title, "folder": job.folder.name, "guid": ep.guid,
             "published": ep.published.isoformat() if ep.published else "",
             "priority": PRIORITY_NAMES[priority_tier(job.podcast)],
-            "source": "reanalyze" if job.reanalyze else
+            "source": "reprocess" if job.later else "reanalyze" if job.reanalyze else
             ("auto" if job.podcast.get("auto_download", True) else "requested")}
 
 
@@ -1133,7 +1151,7 @@ def _run_cycle(cfg: dict, hooks: Hooks) -> CycleResult:
     if not jobs:
         return result
     order_store = QueueOrder(cfg["output_dir"])
-    jobs = QueueOrder.sort(jobs, _job_key, order_store.load(), front=lambda j: j.reanalyze, tier=lambda j: priority_tier(j.podcast))
+    jobs = QueueOrder.sort(jobs, _job_key, order_store.load(), front=lambda j: j.reanalyze and not j.later, tier=lambda j: priority_tier(j.podcast))
     hooks.activity.set_queue([_job_item(j) for j in jobs])
 
     ollama_ok, pool = False, None
@@ -1243,7 +1261,7 @@ class _Run:
             self.remaining += new
             self.total += len(new)
             self.remaining = QueueOrder.sort(self.remaining, _job_key, self.order_store.load(),
-                                             front=lambda j: j.reanalyze, tier=lambda j: priority_tier(j.podcast))
+                                             front=lambda j: j.reanalyze and not j.later, tier=lambda j: priority_tier(j.podcast))
             self.hooks.activity.add_queue([_job_item(j) for j in new])
         log.info("Background feed check: %d new episode(s) added to Up next", len(new))
 
@@ -1283,7 +1301,7 @@ class _Run:
         with self._lock:
             while self.remaining:
                 self.remaining = QueueOrder.sort(self.remaining, _job_key, self.order_store.load(),
-                                                 front=lambda j: j.reanalyze, tier=lambda j: priority_tier(j.podcast))
+                                                 front=lambda j: j.reanalyze and not j.later, tier=lambda j: priority_tier(j.podcast))
                 only = self.hooks.only()
                 if only is not None:         # Start now while paused: just the episodes you picked
                     job = next((j for j in self.remaining if _job_key(j) in only), None)
@@ -1388,28 +1406,52 @@ class _Run:
                 self._failed(job, e)
 
     # ---- overlapping stages ----
+    def _analysis_slots(self) -> int:
+        """How many episodes are checked for ads at once. processing.analyze_parallel; 0 = one per computer
+        that finds ads (up to 4)."""
+        n = int((self.cfg.get("processing") or {}).get("analyze_parallel", 0) or 0)
+        if n > 0:
+            return min(n, 8)
+        if self.pool is None:
+            return 1
+        online = [m for m in self.pool.machines if m.online and not getattr(m, "fallback", False)]
+        others = [m for m in online if not m.local]
+        if others and getattr(self.pool, "mode", "") == "never":     # this PC only helps if the others can't
+            online = others
+        return max(1, min(4, len(online)))
+
     def overlapped(self) -> None:
+        """Two independent stages, each with its own computers:
+          transcription  - one episode per transcribing computer (this PC and/or transcription.servers); it keeps
+                           going until processing.transcribe_ahead episodes are waiting for ad-finding;
+          ad-finding     - several episodes at once (_analysis_slots), their sections shared over the AI computers;
+                           then cutting and writing the files here."""
         h = self.hooks
+        proc = self.cfg.get("processing") or {}
         handoff: queue.Queue = queue.Queue()
-        # Transcribe at most one episode ahead of the one being analyzed. Then Whisper goes quiet,
-        # and (with this_pc: when_idle) this PC's Ollama joins in on the analysis.
-        # With other computers transcribing, several episodes are prepared at once (one per computer).
         workers = max(1, self.wpool.slots())
-        ahead = threading.Semaphore(max(workers, int(self.cfg.get("processing", {}).get("prepare_ahead", 1))))
-        END = object()
+        backlog = max(workers, int(proc.get("transcribe_ahead", 4) or 1), int(proc.get("prepare_ahead", 1) or 1))
+        ahead = threading.Semaphore(backlog)
+        analyzers_n = self._analysis_slots()
+        log.info("Transcribing %d episode(s) at once, finding ads in %d at once (up to %d waiting in between)",
+                 workers, analyzers_n, backlog)
+        DONE = object()
         abort = threading.Event()
+        stopping = threading.Event()
+        left = {"preparers": workers}
+        left_lock = threading.Lock()
 
         def wait_for(fn) -> bool:
             """Wait until fn() is true; False if stopped meanwhile."""
             while not fn():
-                if abort.is_set() or not h.should_continue():
+                if abort.is_set() or stopping.is_set() or not h.should_continue():
                     return False
                 time.sleep(0.3)
             return True
 
         def prepare_loop():
             try:
-                while h.should_continue() and not abort.is_set():
+                while h.should_continue() and not abort.is_set() and not stopping.is_set():
                     if not wait_for(lambda: ahead.acquire(timeout=0.3)):
                         break
                     # "Stop After This Episode": don't start another one meanwhile.
@@ -1430,58 +1472,63 @@ class _Run:
                         ahead.release()
                         self._failed(job, e)
                         continue
-                    h.activity.set_step("transcribed - waiting for analysis", key=_job_key(job))
+                    h.activity.set_step("transcribed - waiting for ad-finding", key=_job_key(job))
                     handoff.put((job, prep))
             except Exception:  # noqa: BLE001
-                log.exception("Preparing episodes stopped unexpectedly")
+                log.exception("Transcribing episodes stopped unexpectedly")
             finally:
-                handoff.put(END)
+                with left_lock:
+                    left["preparers"] -= 1
+                    if left["preparers"] == 0:
+                        handoff.put(DONE)          # nothing more will come
 
-        preparers = [threading.Thread(target=prepare_loop, name=f"prepare-{i}", daemon=True) for i in range(workers)]
-        for t in preparers:
-            t.start()
-        stopping = False
-        ended = 0
-        try:
+        def discard(job, prep, result, detail):
+            shutil.rmtree(prep.work, ignore_errors=True)
+            h.activity.finish_job(result, detail, key=_job_key(job))
+
+        def analyze_loop():
             while True:
                 item = handoff.get()
-                if item is END:
-                    ended += 1
-                    if ended >= len(preparers):
-                        break
-                    continue
+                if item is DONE:
+                    handoff.put(DONE)              # let the other ad-finders see it too
+                    return
                 job, prep = item
-                ahead.release()
-                if stopping or not h.should_continue():
-                    shutil.rmtree(prep.work, ignore_errors=True)
-                    h.activity.finish_job("paused", "will resume at the next check", key=_job_key(job))
-                    stopping = True
+                ahead.release()                    # room for one more transcription
+                if stopping.is_set() or not h.should_continue():
+                    stopping.set()
+                    discard(job, prep, "paused", "will resume at the next check")
                     continue
                 if self._skipped(job):
-                    shutil.rmtree(prep.work, ignore_errors=True)
-                    h.activity.finish_job("skipped", "skipped by you", key=_job_key(job))
+                    discard(job, prep, "skipped", "skipped by you")
                     continue
                 try:
                     out = finish_episode(self.cfg, job, prep, self.session, self.ollama_ok, h, self.pool)
                     self._done(job, out)
                 except Cancelled:
                     if not self._cancelled(job, may_skip=True):
-                        stopping = True
+                        stopping.set()
                 except Exception as e:  # noqa: BLE001
                     self._failed(job, e)
-                if not stopping:
-                    h.job_finished()      # e.g. "Stop After This Episode"
+                if not stopping.is_set():
+                    h.job_finished()               # e.g. "Stop After This Episode"
                     if not h.should_continue():
-                        stopping = True
+                        stopping.set()
+
+        preparers = [threading.Thread(target=prepare_loop, name=f"transcribe-{i}", daemon=True) for i in range(workers)]
+        analyzers = [threading.Thread(target=analyze_loop, name=f"find-ads-{i}", daemon=True) for i in range(analyzers_n)]
+        for t in preparers + analyzers:
+            t.start()
+        try:
+            for t in analyzers:
+                t.join()
         finally:
             abort.set()
-            while any(t.is_alive() for t in preparers) or not handoff.empty():   # clean up anything still prepared
-                try:
-                    item = handoff.get(timeout=0.5)
-                except queue.Empty:
-                    continue
-                if item is not END:
-                    shutil.rmtree(item[1].work, ignore_errors=True)
-                    h.activity.finish_job("paused", "will resume at the next check", key=_job_key(item[0]))
             for t in preparers:
                 t.join()
+            while True:                            # anything transcribed but not checked: resume next time
+                try:
+                    item = handoff.get_nowait()
+                except queue.Empty:
+                    break
+                if item is not DONE:
+                    discard(item[0], item[1], "paused", "will resume at the next check")
