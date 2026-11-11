@@ -1,8 +1,13 @@
 # ---- your own settings and private notes (never share these) ----
-config.yaml
-config.yaml.bak
-config.check.yaml
+config*.yaml
+!config.example.yaml
 *.bak
+prompt*.txt
+old prompts.txt
+New Text Document.txt
+*.bin
+*.zip
+# (config.check.yaml is covered by config*.yaml)
 .env
 .env.*
 memory.md

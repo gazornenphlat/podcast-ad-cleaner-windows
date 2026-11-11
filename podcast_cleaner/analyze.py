@@ -9,6 +9,7 @@ from __future__ import annotations
 import bisect
 import json
 import logging
+import re
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -40,6 +41,7 @@ Find:
    Rules:
    - Ads usually last 15-120 seconds and have a call to action: a web address, promo code, phone number, "sign up", "free trial", "brought to you by".
    - Follow an ad to its end, and include its lead-in ("this episode is brought to you by", "after the break") and the line that returns to the show ("now back to the show").
+   - An ad can have no "brought to you by", web address or code: a self-contained pitch for a named product, with several of its benefits told to the listener, that interrupts the conversation instead of belonging to it, is an ad too - give it a medium confidence (0.5-0.7).
    - A company mentioned while discussing a topic, with no sales pitch, is NOT an ad. Neither are requests to subscribe, rate or review, nor previews of upcoming content.
    - When unsure, give a lower confidence rather than leaving it out.
    - A line like "[95] (no speech for 12 s)" is music, a jingle or silence. Include it in an ad it sits inside or right next to. List one on its own (type "jingle") only when the lines around it show it is an ad jingle or bumper, not music that is part of the show.{segment_rules}
@@ -52,6 +54,13 @@ Example - an ad:
 [326] Use ***code SHOW*** at checkout.
 [330] Okay, back to the interview. You were saying about the early years?
 Answer: {{"ads": [{{"start": 310, "end": 330, "sponsor": "Northwind Mattress", "type": "sponsor", "confidence": 0.97}}], "chapters": []}}
+
+Example - an ad with no code or web address:
+[742] Anyway, I've been looking for a better way to protect my privacy online, and that's why I started using Acme VPN.
+[749] It secures your connection wherever you are, on all your devices, so you can browse knowing your data is safe.
+[757] It's a really simple way to add another layer of security to your everyday internet use.
+[763] So, where were we? The story about your first job.
+Answer: {{"ads": [{{"start": 742, "end": 757, "sponsor": "Acme VPN", "type": "sponsor", "confidence": 0.6}}], "chapters": []}}
 
 Example - not an ad:
 [1210] We moved the whole thing to a bigger cloud provider in 2019.
@@ -134,9 +143,19 @@ def _ask(ocfg: dict, prompt: str, url: str | None = None, should_continue=lambda
         "keep_alive": KEEP_ALIVE,
         "options": {"temperature": ocfg["temperature"], "num_ctx": int(ocfg["num_ctx"])},
     }
+    base = (url or ocfg['url']).rstrip('/')
+    # Thinking models (Qwen3.x, Gemma 4, ...) think before every answer, which makes each section many times
+    # slower. ollama.think: false switches that off. Ollama versions or models that don't know the setting
+    # refuse it - then it's left out for that computer and model from then on.
+    if not ocfg.get("think", False) and (base, ocfg["model"]) not in _no_think_setting:
+        payload["think"] = False
     parts = []
-    with requests.post(f"{(url or ocfg['url']).rstrip('/')}/api/generate", json=payload, stream=True,
+    with requests.post(f"{base}/api/generate", json=payload, stream=True,
                        timeout=(10, float(ocfg["timeout_seconds"]))) as r:
+        if r.status_code == 400 and "think" in payload and "think" in r.text.lower():
+            _no_think_setting.add((base, ocfg["model"]))
+            log.info("Ollama at %s doesn't accept 'think' for %s - asking without it", base, ocfg["model"])
+            return _ask(ocfg, prompt, url, should_continue, system)
         r.raise_for_status()
         for line in r.iter_lines():
             if not should_continue():
@@ -152,13 +171,25 @@ def _ask(ocfg: dict, prompt: str, url: str | None = None, should_continue=lambda
             parts.append(msg.get("response", ""))
             if msg.get("done"):
                 break
-    text = "".join(parts)
+    text = strip_thinking("".join(parts))
     try:
         data = json.loads(text)
     except json.JSONDecodeError:
-        log.debug("Unparseable model output: %s", text[:500])
-        return {}
+        from .cloud import parse_json            # tolerates a sentence or ``` around the JSON
+        return parse_json(text)
     return data if isinstance(data, dict) else {}
+
+
+_no_think_setting: set = set()
+_THINK_RE = re.compile(r"<(think|thinking|reasoning)>.*?</\1>", re.S | re.I)
+
+
+def strip_thinking(text: str) -> str:
+    """Remove a model's visible thinking (<think>...</think>), and an unfinished one at the start."""
+    text = _THINK_RE.sub("", text or "")
+    if re.match(r"\s*<(think|thinking|reasoning)>", text, re.I):    # cut off mid-thought: keep what follows
+        text = text[text.find("{"):] if "{" in text else ""
+    return text.strip()
 
 
 RETRY_NOTE = ("\n\nIMPORTANT: your previous answer could not be read. Reply with ONE complete JSON object "

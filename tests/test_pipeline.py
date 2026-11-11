@@ -66,8 +66,8 @@ def test_episode_is_cleaned(server, make_cfg, audio, stub_ai, fake_whisper, run_
     assets = {p.suffix for p in (folder / "assets").iterdir()}
     assert {".vtt", ".json", ".txt"} <= assets
     assert list((folder / "transcripts").glob("*.timeline.json"))
-    rows = (Path(cfg["output_dir"]) / "ads.csv").read_text(encoding="utf-8-sig")
-    assert "Acme" in rows
+    from podcast_cleaner.adlog import AdLog
+    assert [r["sponsor"] for r in AdLog(cfg["output_dir"]).rows()] == ["Acme"]
     assert "Advertisements removed: 1" in report_of(cfg, "Test Show")
 
 
@@ -409,3 +409,30 @@ def test_model_test_with_several_computers(make_cfg, stub_ai, tmp_path):
     single = [r.seconds for k, r in by.items() if k.startswith("ollama:")]
     assert by["pool:ollama"].seconds < min(single)                      # two computers beat one
     assert "found 100%" in bench.report(res, eps)
+
+
+def test_reprocess_later_waits_behind_new_episodes(server, make_cfg, audio, stub_ai, fake_whisper, run_cycle):
+    """Re-process (later): the old episode is done again, after the new one; 'not an ad' marks are kept."""
+    from podcast_cleaner.adlog import AdLog
+    from podcast_cleaner.state import DownloadRequests
+    fake_whisper(text_at)
+    ai = stub_ai(acme_ai())
+    items = [{"guid": "e1", "title": "Ep 1", "audio": "/ep.mp3", "pub": "Mon, 12 Oct 2026 10:00:00 GMT"}]
+    cfg, srv = setup_show(server, make_cfg, audio, ai, items=items)
+    r, _ = run_cycle(cfg)
+    assert r.processed == ["Test Show - Ep 1"]
+    log = AdLog(cfg["output_dir"])
+    row = log.rows()[0]
+    log.set_status({row["id"]}, "not_ad")                     # what Found Ads > "Not an ad" does
+    from podcast_cleaner.learned import Learned, key_for
+    Learned(cfg["output_dir"]).set_kind({key_for(row["podcast"], row["episode"], row["start"])}, "not_ad")
+    # a new episode arrives, and you ask for Ep 1 to be re-processed later
+    items.insert(0, {"guid": "e2", "title": "Ep 2", "audio": "/ep.mp3", "pub": "Mon, 19 Oct 2026 10:00:00 GMT"})
+    DownloadRequests(cfg["output_dir"]).add("Test Show", "e1", "Ep 1", "reprocess")
+    r, act = run_cycle(cfg, )
+    assert r.processed == ["Test Show - Ep 2", "Test Show - Ep 1"], r.processed      # new first, then the redo
+    st = state_of(cfg, "Test Show")["episodes"]["e1"]
+    assert st["status"] == "done" and st.get("reanalyzed")
+    assert not DownloadRequests(cfg["output_dir"]).reanalyses()                      # the request is used up
+    ep1 = [x for x in AdLog(cfg["output_dir"]).rows() if x["episode"] == "Ep 1"]
+    assert [x["status"] for x in ep1] == ["not_ad"]       # your correction is kept; the read isn't cut again

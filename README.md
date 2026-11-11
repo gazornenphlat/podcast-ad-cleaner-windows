@@ -4,26 +4,6 @@ A Windows system-tray port of [adamc199/podcast-ad-cleaner](https://github.com/a
 It watches a list of podcast RSS feeds, downloads new episodes, transcribes them with Whisper,
 finds ads with a local Ollama model, cuts them out with ffmpeg, and writes chapters into the MP3.
 
-## Screenshots
-
-The desktop window (pywebview) and the phone browser show the same pages.
-
-| Activity | Podcasts |
-|---|---|
-| ![Activity](screenshots/activity.png) | ![Podcasts](screenshots/podcasts.png) |
-
-| Found Ads | AI |
-|---|---|
-| ![Found Ads](screenshots/foundads.png) | ![AI](screenshots/ai.png) |
-
-| Transcription | Settings |
-|---|---|
-| ![Transcription](screenshots/transcription.png) | ![Settings](screenshots/settings.png) |
-
-| Stats |
-|---|
-| ![Stats](screenshots/stats.png) |
-
 ## What's new vs. the original
 
 | Original (bash, Linux/macOS) | This version (Python, Windows) |
@@ -108,7 +88,7 @@ pulls the Ollama model, copies `config.example.yaml` → `config.yaml`, and runs
     **Re-analyze** (select one or more) downloads the original again and redoes transcription and ad detection with your
     current Whisper model, Ollama model, ad rules and sponsor lists, e.g. after improving your Ad rules or switching to
     a bigger model. It goes to the front of the queue (shown under **Up next**), replaces the cleaned file when done,
-    and updates the episode's rows in `ads.csv` (ads you marked "Not an ad" are kept). If it fails, the existing file is
+    and updates the episode's rows in the ad history (ads you marked "Not an ad" are kept). If it fails, the existing file is
     kept and the reason is shown. It also works for episodes since deleted by retention, and for ones that have left
     the feed if they were processed with this version or later (the audio address is now saved). The episode's files
     replace whatever is in its show's `assets\` folder.
@@ -133,7 +113,7 @@ pulls the Ollama model, copies `config.example.yaml` → `config.yaml`, and runs
   *More checks* below). Below that, every ad ever cut, across all podcasts: date, show, episode, where it was, length, sponsor, and whether the
   AI or the feed found it. Select one to see **what was said**. Filter by podcast or search. The **Sponsors** panel
   totals ads and time per sponsor. **Not an ad** / **It is an ad** corrects a cut. The audio already cut stays cut,
-  but future checks use the correction. **Open ads.csv** opens the full history in Excel.
+  but future checks use the correction. **Open in Excel** opens a copy of the full history.
   **Always watch for** (below the Sponsors panel, sortable like the other lists): **Add sponsor...** adds advertisers to look for on every show, even
   ones the AI has never found (several at once, comma-separated); **Remove** takes them off. Stored as
   `ollama.watch_sponsors` in `config.yaml`. Adding a sponsor you once marked "Not an ad" overrides that correction.
@@ -303,7 +283,15 @@ Settings > Transcription has the main controls; everything is also in `config.ya
 ### Ad detection tuning
 Everything below except sponsor memory can also be set in the window (**Ad rules** tab, and **Podcasts → Edit → Known sponsors**).
 
-- **What counts as an ad** (`ollama.extra_instructions`): plain-English guidance added to the prompt for every show. Saying what is *not* an ad helps as much as saying what is.
+- **What counts as an ad** (`ollama.extra_instructions`): plain-English guidance added to the prompt for every show. Saying what is *not* an ad helps as much as saying what is. Keep it short (under ~150 words): it's sent with every section, and small models follow a few sharp rules better than many. Describe what each kind of ad looks like rather than whether to cut it - *Also cut* decides that.
+- **Thinking** (AI tab, `ollama.think` / `lmstudio.think`, off by default): "thinking" models such as Qwen3.x and
+  Gemma 4 normally reason before every answer, which makes each section several times slower and rarely finds more
+  ads. With it off, the app asks them to answer straight away (Ollama's `think` setting; for LM Studio the chat
+  template's `enable_thinking`, plus `/no_think` for Qwen3) and removes any thinking text that still slips through.
+  Older Ollama versions that don't know the setting are simply asked without it. Other models aren't affected.
+- **Which model**: an *instruct* model of about 7-14B works best (e.g. qwen2.5:7b, llama3.1:8b, gemma4:12b,
+  qwen2.5:14b); try a few with **AI > Test AI models** on episodes whose ads you've checked.
+- **Ads with no code or web address**: the built-in prompt includes an example of a host-read pitch with no "brought to you by", URL or code (a named product, several benefits told to the listener, interrupting the conversation). The AI marks these with a medium confidence (0.5-0.7), so **Cut only when at least … sure** and **Hold for review** decide whether they're cut or held for you to check.
 - **Sponsor memory** (`ollama.remember_sponsors`): sponsors of ads that were removed are saved in each podcast's `.podcast-state.json` (with a count and last-seen date), and the most recent `max_known_sponsors` are named in the prompt for future episodes. Delete a name there if it was a false positive.
 - **Known sponsors** per podcast: `sponsors: [BetterHelp, Squarespace]` in its config entry.
 - **Crossfade** (`output.crossfade_ms`, default 40): set `0` for hard cuts.
@@ -386,9 +374,13 @@ processing:
 ```
 
 How it behaves:
-- **Overlapping stages** (`processing.overlap_stages`): while the other PCs analyze episode 1, this PC downloads and
-  transcribes episode 2. It transcribes at most one episode ahead (`prepare_ahead`), then Whisper goes quiet and
-  this PC's Ollama can join in.
+- **Two independent stages** (`processing.overlap_stages`): transcription and ad-finding each run at their own pace,
+  on their own computers. The transcribing computers (Transcription tab) keep working through Up next until
+  `transcribe_ahead` episodes (default 4) are waiting; meanwhile the AI computers (AI tab) find the ads in
+  `analyze_parallel` episodes at once (default 0 = one per AI computer, up to 4). So you can have one group of PCs
+  that only transcribes and another that only finds ads - set "This PC transcribes" and "This PC's Ollama helps"
+  to never if the main PC should do neither. Cutting and writing the files always happens on the main PC.
+  With `when_idle`, this PC's Ollama helps less than before, because Whisper now keeps working ahead.
 - **This PC** (`ollama.this_pc`): `when_idle` (default) takes sections only while Whisper has nothing to transcribe,
   because both share the CPU. `always` suits a PC with a GPU. `never` leaves it to the others (unless none is reachable).
 - **Pause / Resume** (AI tab, select a computer): a paused computer finishes the section(s) it's working on, then gets
@@ -418,7 +410,7 @@ All are set on the **Ad rules** tab (Detection) or in `config.yaml`:
   into the cut. An ad in the first 45 seconds also gets its intro, if there's a lead-in just before it.
 - **Confidence**: the AI says how sure it is and whether it's a sponsor, a promo for another show, or the hosts' own
   product. Below **Cut only when at least** (default 60%) it's left in and listed under "Left in" in `report.txt`. The
-  hosts' own products are cut only if you choose to (see *What to cut* below). `ads.csv` has a confidence column.
+  hosts' own products are cut only if you choose to (see *What to cut* below). The ad history (Download ads.csv) has a confidence column.
 - **Better instructions**: the AI is told the show's name and what it's about, and gets a worked example of an ad and
   of a company mention that isn't one.
 - **Second pass on ad edges** (off by default): one extra request per ad, asking exactly where it starts and ends.
@@ -492,7 +484,7 @@ These ideas come from [Podcast Ad Remover](https://github.com/jdcb4/podcast-ad-r
 - **Test AI models** (AI tab): runs the AI setups you tick over episodes whose ads you've checked, and scores each
   one. Setups can be each Ollama or LM Studio computer, and each cloud service with an API key. The score covers
   how much of the real ad time it found, which ads it missed, how much it would have cut wrongly, and how long it
-  took. "Real" means `ads.csv` as you've corrected it with Not an ad and approvals. Nothing is cut or changed.
+  took. "Real" means the ad history as you've corrected it with Not an ad and approvals. Nothing is cut or changed.
   Multi-computer setups are listed too: **As used for episodes** (exactly your AI tab setup, fallback included),
   and **all Ollama / LM Studio computers together**. These split the sections between computers like a normal run,
   so you can see what an extra PC gains. Tests that use different computers run at the same time; tests sharing a
@@ -537,8 +529,8 @@ Nothing the app downloads can hang it:
 A feed that fails 3 checks in a row is flagged in the log, and by a phone notification if set up.
 
 ### Ad history and the global sponsor list
-Every removed ad is appended to **`<output_dir>\ads.csv`** (e.g. `D:\Podcasts\ads.csv`). It's permanent, covers all
-podcasts, and opens in Excel. Each analysis prompt then includes:
+Every removed ad is recorded in the ad history (in `podcast-cleaner.db`). It's permanent and covers all podcasts;
+Found Ads > Download ads.csv / Open in Excel gives you a copy. Each analysis prompt then includes:
 
 0. **Always watch for**: sponsors you added in the Found Ads tab (or `ollama.watch_sponsors`).
 1. **This show's sponsors**: the ones you listed for it, plus those found in its earlier episodes.
@@ -546,10 +538,9 @@ podcasts, and opens in Excel. Each analysis prompt then includes:
    learned on one show is recognised on all the others.
 3. **Corrections**: anything you marked **Not an ad** in the Found Ads tab, listed as *not* ads.
 
-`ads.csv` can safely be opened, edited or re-saved in Excel (comma or semicolon separated, UTF-8 or Windows
-encoding). Rows you add by hand only need a `sponsor` column (`status` = `ad` or `not an ad`). Missing or duplicate
-ids are fixed automatically, and a file the app can't read never stops an episode. Close it in Excel when done:
-while it's open, new ads can't be recorded (the app won't overwrite it, and logs a warning instead).
+The Excel copy is just a copy: corrections are made in Found Ads (Not an ad / It's an ad), which also teaches the
+learned reads. An old `ads.csv` (from before the database) is imported once, whatever Excel did to it (comma or
+semicolon separated, UTF-8 or Windows encoding, missing ids).
 
 Turn these off with `ollama.use_global_sponsors: false` / `ollama.use_ad_feedback: false`.
 
@@ -582,7 +573,7 @@ phone or in any browser at `http://<this PC>:8585/app/` (the feed page's address
 Activity, Podcasts (add, edit, search, OPML, clean files), Choose Episodes, Browse Feeds, Ad Rules, Found Ads (with
 Listen, sponsors, learned-ad sharing), Stats, AI (service, computers, Test AI models), Settings and Log.
 On a phone, the bottom bar has Activity, Podcasts and Found Ads, and More for the rest.
-A few things only work from the PC itself: opening folders and files, Clean files, and Start with Windows.
+A few things only work from the PC itself: opening folders and files, Clean files, Start with Windows, and quitting the engine. Settings can be changed from any device on your network.
 The window needs Microsoft Edge WebView2, which Windows 10 and 11 already have. If it can't open, the older window is
 used instead; to choose the older window yourself, start with `python -m podcast_cleaner tray --classic`.
 Who can open the pages: this PC always; other devices on your home network when `server.token` is empty. With a token
@@ -600,10 +591,20 @@ and its episode goes to another one, in the end this PC. "This PC transcribes": 
 never (then only if none of the others can be reached). Pause/Resume works like the AI computers. Setup steps for both
 kinds are under "How to set up another computer" in the tab. These computers only transcribe; the AI is set in the AI tab.
 
+**Re-process episodes.** Podcasts > a show's ⋯ menu > Re-process episodes (or Episodes): tick episodes, or "all
+cleaned", and choose **Re-process next** (they go to the front of Up next) or **Re-process later** (they wait behind
+new episodes - best for a whole show). Each is downloaded, transcribed and checked again with your current
+settings; ads you marked "Not an ad" stay uncut. Activity > Finished > Redo still does a single episode next.
+
+**Ad history in the database.** The list of every ad cut (formerly `ads.csv`) is now in `podcast-cleaner.db`. An
+existing `ads.csv` is imported once and renamed `ads.csv.migrated`. Found Ads > **Download ads.csv** (or **Open in
+Excel** on this PC, which writes `ads-export.csv` to your podcasts folder) gives you a copy for Excel; edit
+"not an ad" in Found Ads, not in the copy.
+
 **One database.** Everything the app remembers is now in `podcast-cleaner.db` in your podcasts folder (SQLite):
 each show's episodes, your download choices, Up next order, paused computers, files to clean, review decisions and
 learned ads. The old `.json` files are imported automatically the first time and renamed to `*.json.migrated`
-(delete them once you're happy). `ads.csv` stays a CSV so you can still open it in Excel.
+(delete them once you're happy). The ad history is in it too (see above).
 Back it up by copying the file while the app is closed.
 
 **Clearer config errors.** Every setting in `config.yaml` is checked when it's read, and mistakes are listed plainly,
@@ -662,6 +663,15 @@ Ranked roughly by value for effort:
 1. **Use a larger Ollama model** (`qwen2.5:7b` or `llama3.1:8b`) if you have 8 GB+ RAM/VRAM. A 3B model misses host-read ads and sometimes flags normal content. Change `ollama.model`, no code changes.
 2. **Dry-run / review mode.** Write the report and a short audio clip of each detected ad without cutting, so you can tune `min/max_ad_seconds` and the prompt before trusting it.
 3. **Battery/idle awareness**: skip heavy work when on battery or when the PC isn't idle; transcription will pin the CPU for a while.
+
+## Troubleshooting "Not Responding" on the window
+
+**The window says "Not Responding" but everything keeps working.** Fixed in this version: the window offered its
+own internals to the page by mistake, and pywebview scanned all of them each time the page loaded. Also, the window keeps its browser data (cache, page
+storage) in `%LOCALAPPDATA%\PodcastAdCleaner\webview` on this PC's own drive; earlier versions put it next to the
+app, which stalls the window when the app is on a network drive. If it still happens, the window writes
+`window-hang-report.txt` in the logs folder (next to the log) each time it stops answering for 15 seconds - that file
+shows what it was waiting on, even if the whole window program froze. The engine (and the phone pages) carry on regardless; closing and reopening the window is safe.
 
 ## Troubleshooting downloads
 Episode links often go through several tracking services before the real file, for example

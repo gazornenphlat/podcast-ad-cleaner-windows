@@ -18,13 +18,16 @@ podcast_cleaner/
   webtools.py      the rest of the API: GET /api/<name>, POST /api/do/<name> (podcasts, AI, transcription...)
   server.py        HTTP server: RSS feeds, media files, and it routes /api and /app to api.py
   web/             the web pages: index.html, app.css, app.js (core tabs), pages.js (form tabs). Plain JS, no build.
-  pipeline.py      one check: find episodes -> prepare (download, transcribe) -> finish (find ads, cut, write files)
+  pipeline.py      one check: find episodes -> transcribe stage (download, transcribe; one thread per transcribing
+                   computer) -> ad-finding stage (find ads, cut, write files; several episodes at once).
+                   The two stages are independent; a per-show lock keeps file writing for one show one at a time
   whisperpool.py   transcription on this PC or on other PCs (speaches / whisper.cpp servers), one episode each
   transcribe.py    Whisper on this PC (faster-whisper / openai-whisper); whispercpp.py for whisper.cpp
   analyze.py, pool.py, lmstudio.py, cloud.py   finding ads with the AI; pool.py shares sections over Ollama PCs
   cues.py, learned.py, crossfetch.py, pubtranscript.py, review.py   extra ad-finding checks, held-for-review
   media.py         ffmpeg: cutting, tones, loudness, chapters
   db.py            the SQLite database (<output_dir>/podcast-cleaner.db); state.py wraps it (same API as old JSON)
+  adlog.py         the ad history (table ads; was ads.csv, imported once); export_csv() for Excel
   config.py        DEFAULTS and load_config; settings_model.py checks config.yaml with pydantic
   configedit.py    edits config.yaml keeping comments (ruamel)
   gui.py, gui_extra.py, theme.py   the older Tkinter window (fallback: tray --classic)
@@ -43,7 +46,8 @@ build.ps1          PyInstaller one-file build; build-whisper-vulkan.ps1 builds w
   in the path.
   - Every POST needs the header `X-Podcast-Cleaner: 1`.
   - Secrets (api_key, token...) are sent to pages as `********`; a `********` value coming back means "unchanged".
-  - Opening files or folders, Clean files and Windows startup are allowed only from this PC (`webtools.LOCAL_ONLY`).
+  - Opening files or folders, Clean files, Windows startup and Quit are allowed only from this PC
+    (`webtools.LOCAL_ONLY` and `api.LOCAL_ONLY_ACTIONS`). Settings can be changed from any device on the network.
 
 ## Commands
 ```

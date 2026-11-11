@@ -208,6 +208,9 @@ nav#more-links a { padding: 14px 10px; border-bottom: 1px solid var(--outline); 
 .help summary { cursor: pointer; color: var(--primary-text); font-weight: 600; }
 .help code { background: var(--surface); border-radius: 6px; padding: 1px 5px; font-size: 12px; overflow-wrap: anywhere; }
 
+.sticky-top { position: sticky; top: 0; background: var(--card); z-index: 1; padding: 8px 0; margin: 0 0 4px; border-bottom: 1px solid var(--outline); }
+#dlg .list { max-height: none; }
+
 /* ---------- dialog and toasts ---------- */
 dialog {
   border: 1px solid var(--outline); border-radius: 16px; padding: 0; width: min(680px, calc(100vw - 24px));

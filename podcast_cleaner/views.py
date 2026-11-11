@@ -19,7 +19,7 @@ def queue_rows(cfg: dict | None, snap: dict) -> list[tuple[str, tuple, tuple]]:
         key = f"{q['folder']}|{q['guid']}"
         seen.add(key)
         tiers[key] = priority_tier(by_folder.get(q["folder"]))
-        why = {"auto": "New episode", "reanalyze": "Re-analyze"}.get(q.get("source"), "You chose it")
+        why = {"auto": "New episode", "reanalyze": "Re-analyze", "reprocess": "Re-process"}.get(q.get("source"), "You chose it")
         tags = ("high",) if tiers[key] <= 1 else ("muted",) if tiers[key] == 3 else ()
         rows.append((key, (q["podcast"], q["title"], (q.get("published") or "")[:10],
                            why + prio_note(q["folder"])), tags))
@@ -65,7 +65,8 @@ def queue_rows(cfg: dict | None, snap: dict) -> list[tuple[str, tuple, tuple]]:
             key = f"{r['folder']}|{r['guid']}"
             if key in seen or r.get("action") == "skip":
                 continue
-            why = "Re-analyze - next check" if r.get("action") == "reanalyze" else "You chose it - next check"
+            why = {"reanalyze": "Re-analyze - next check", "reprocess": "Re-process - waits its turn",
+                   "recut": "Re-cut - next check"}.get(r.get("action"), "You chose it - next check")
             rows.append((key, (names.get(r["folder"], r["folder"]), r.get("title", ""), "", why), ("queued",)))
         rows = QueueOrder.sort(rows, lambda row: row[0], QueueOrder(cfg["output_dir"]).load(),
                                front=lambda row: row[1][3].startswith("Re-analyze"),

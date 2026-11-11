@@ -91,3 +91,37 @@ def test_web_window_with_separate_engine(fake_webview, make_cfg, monkeypatch):
             break
         time.sleep(0.2)
     assert not api.ping(f"http://127.0.0.1:{port}", 0.5)
+
+
+def test_hang_reporter_writes_where_the_window_is_stuck(tmp_path):
+    """If the window stops answering, where every thread is waiting is written - by faulthandler, whose timer
+    runs outside Python, so it works even if the whole program is frozen."""
+    import threading
+    from podcast_cleaner import desktop
+    stuck = threading.Event()
+
+    class Win:
+        def evaluate_js(self, code):
+            if stuck.is_set():
+                stuck.clear()
+                time.sleep(1.5)            # the window's thread is blocked for a while
+            return 1
+    report = tmp_path / "window-hang-report.txt"
+    stop = threading.Event()
+    t = threading.Thread(target=desktop.watch_window, args=(Win(), report),
+                         kwargs={"every": 0.1, "limit": 0.5, "stop": stop}, daemon=True)
+    t.start()
+    time.sleep(0.6)
+    assert report.read_text() == ""                      # answering: nothing written
+    stuck.set()
+    time.sleep(2.5)
+    stop.set()
+    t.join(3)
+    text = report.read_text()
+    assert "Timeout" in text and "Thread" in text and text.count("answered again") == 1
+
+
+def test_browser_data_kept_on_this_pc(monkeypatch, tmp_path):
+    from podcast_cleaner import desktop
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "Local"))
+    assert desktop.webview_data_dir() == tmp_path / "Local" / "PodcastAdCleaner" / "webview"

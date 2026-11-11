@@ -75,6 +75,7 @@ whisper_cpp:
 ollama:
   url: http://localhost:11434
   model: llama3.2:3b       # bigger models (qwen2.5:7b, llama3.1:8b) find ads more reliably
+  think: false             # true = let "thinking" models (Qwen3.x, Gemma 4) think first: much slower
   timeout_seconds: 300     # give up if Ollama produces NO output for this long (slow-but-working is fine)
   temperature: 0.1
   num_ctx: 8192            # context window; must fit one chunk of transcript
@@ -147,7 +148,10 @@ processing:
   # Transcribe the next episode while the current one is analyzed / cut.
   # false = one episode at a time, every step in turn.
   overlap_stages: true
-  prepare_ahead: 1         # how many episodes may be transcribed ahead of the one being analyzed
+  # Transcription and ad-finding are independent: the transcribing computers (transcription:) keep going while
+  # the AI computers (ollama: / lmstudio: / ai:) find ads, each group at its own pace.
+  transcribe_ahead: 4      # at most this many episodes transcribed and waiting for ad-finding
+  analyze_parallel: 0      # episodes checked for ads at once; 0 = one per AI computer (up to 4)
   # New episodes of LOW-priority shows are only started between these times (e.g. overnight). Other
   # shows, re-analyses and files you clean aren't affected; waiting episodes are listed in Up next.
   # Times may cross midnight (22:00 - 06:00). Also in Settings > Low-priority hours.
@@ -172,6 +176,7 @@ phone_notifications:
 # "Serve on Local Network"). LM Studio Bionic's local models run on the same LM Studio runtime.
 # The model is loaded for you with these GPU settings if it isn't loaded already.
 lmstudio:
+  think: false             # as ollama.think
   url: http://localhost:1234     # this PC
   servers: []                    # other PCs, e.g. [192.168.1.20, gaming-pc]
   model: ""                      # e.g. qwen/qwen3-8b; blank = whatever is loaded (AI tab lists them)

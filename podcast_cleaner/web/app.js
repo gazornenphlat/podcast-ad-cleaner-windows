@@ -285,6 +285,7 @@ function renderPods() {
       <details class="menu"><summary class="btn ghost small" aria-label="More for ${esc(p.name)}">⋯</summary>
         <div class="menu-body" style="left:auto;right:0">
           <button class="btn ghost small" data-a="episodes">Episodes…</button>
+          <button class="btn ghost small" data-a="episodes">Re-process episodes…</button>
           <button class="btn ghost small" data-a="edit">Edit…</button>
           <button class="btn ghost small" data-a="auto">${p.auto_download ? "Let me choose episodes" : "Download automatically"}</button>
           <button class="btn ghost small" data-a="enabled">${p.enabled ? "Turn off" : "Turn on"}</button>
@@ -343,16 +344,47 @@ async function openShow(folder, name) {
   $("#dlg-title").textContent = name;
   $("#dlg-body").innerHTML = `<p class="muted">Loading…</p>`;
   $("#dlg").showModal();
-  const eps = await get(`episodes?show=${encodeURIComponent(folder)}`);
-  $("#dlg-body").innerHTML = eps.length ? `<ul class="list">${eps.map((e) => `
-    <li><div class="grow"><div class="t">${esc(e.display_title || e.title)}</div>
+  const eps = await get(`episodes?show=${encodeURIComponent(folder)}&limit=2000`);
+  const done = eps.filter((e) => e.status === "done").length;
+  $("#dlg-body").innerHTML = eps.length ? `
+    ${done ? `<div class="row-actions sticky-top" id="rp-bar">
+      <label class="check small"><input type="checkbox" id="rp-all"> all ${done} cleaned</label>
+      <button class="btn small primary" id="rp-next" type="button" disabled title="Go to the front of Up next">Re-process next</button>
+      <button class="btn small secondary" id="rp-later" type="button" disabled title="Wait behind new episodes">Re-process later</button>
+      <span class="muted small" id="rp-note">Downloads again, transcribes and finds the ads with your current settings.</span>
+    </div>` : ""}
+    <ul class="list">${eps.map((e) => `
+    <li>${e.status === "done" ? `<input type="checkbox" data-rp="${esc(e.guid)}" aria-label="Pick for re-processing">` : `<span style="width:17px"></span>`}
+      <div class="grow"><div class="t">${esc(e.display_title || e.title)}</div>
       <div class="s">${esc((e.published || "").slice(0, 10))}${e.ads_removed != null ? ` · ${e.ads_removed} ad(s), ${clock(e.seconds_removed)} removed` : ""}${e.error ? ` · ${esc(String(e.error).slice(0, 100))}` : ""}</div></div>
       <span class="chip ${esc(e.status)}">${esc(EP_LABEL[e.status] || e.status)}</span>
       ${["available", "failed", "skipped"].includes(e.status) ? `<button class="btn small primary" data-a="request_episode" data-g="${esc(e.guid)}">Get</button>` : ""}
       ${e.status === "available" ? `<button class="btn small ghost" data-a="skip_episode" data-g="${esc(e.guid)}">Skip</button>` : ""}
-      ${e.status === "done" ? `<button class="btn small ghost" data-a="reanalyze_episode" data-g="${esc(e.guid)}">Redo</button>` : ""}
     </li>`).join("")}</ul>` : `<p class="muted">No episodes yet — they appear after the first check.</p>`;
+  const picked = () => [...document.querySelectorAll("#dlg-body input[data-rp]:checked")].map((c) => c.dataset.rp);
+  const update = () => {
+    const n = picked().length;
+    if (!$("#rp-next")) return;
+    $("#rp-next").disabled = $("#rp-later").disabled = !n;
+    $("#rp-next").textContent = n ? `Re-process ${n} next` : "Re-process next";
+    $("#rp-later").textContent = n ? `Re-process ${n} later` : "Re-process later";
+  };
+  const send = async (later) => {
+    const items = picked().map((g) => ({ folder, guid: g, title: (eps.find((x) => x.guid === g) || {}).title || "" }));
+    if (items.length > 5 && !confirm(`Re-process ${items.length} episodes of ${name}? Each is downloaded, transcribed and checked again.`)) return;
+    const n = await act("reprocess", { items, later });
+    toast("Queued", `${n} episode(s) will be re-processed ${later ? "after the new episodes" : "next"}.`);
+    document.querySelectorAll("#dlg-body input[data-rp]").forEach((c) => { c.checked = false; });
+    if ($("#rp-all")) $("#rp-all").checked = false;
+    update();
+  };
+  $("#dlg-body").onchange = (ev) => {
+    if (ev.target.id === "rp-all") document.querySelectorAll("#dlg-body input[data-rp]").forEach((c) => { c.checked = ev.target.checked; });
+    update();
+  };
   $("#dlg-body").onclick = async (ev) => {
+    if (ev.target.id === "rp-next") return send(false);
+    if (ev.target.id === "rp-later") return send(true);
     const b = ev.target.closest("button[data-a]");
     if (!b) return;
     const ep = eps.find((x) => x.guid === b.dataset.g);

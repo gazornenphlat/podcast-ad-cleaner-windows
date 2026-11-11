@@ -13,7 +13,7 @@ Tables
   episodes  one row per episode: status, title, dates, attempts + everything else as JSON
   kv        small named lists (download requests, Up next order, paused computers, ...)
   meta      a change counter, so the window knows when to refresh
-ads.csv stays a CSV, because it's meant to be opened in Excel.
+  ads       every ad cut (was ads.csv; Found Ads > Download ads.csv makes a copy for Excel)
 """
 from __future__ import annotations
 
@@ -51,6 +51,10 @@ CREATE TABLE IF NOT EXISTS episodes (show TEXT NOT NULL, guid TEXT NOT NULL, sta
                                      data TEXT NOT NULL, PRIMARY KEY (show, guid));
 CREATE INDEX IF NOT EXISTS episodes_status ON episodes(status);
 CREATE INDEX IF NOT EXISTS episodes_updated ON episodes(updated);
+CREATE TABLE IF NOT EXISTS ads (id INTEGER PRIMARY KEY AUTOINCREMENT, processed TEXT, podcast TEXT, episode TEXT,
+                                published TEXT, start REAL, "end" REAL, seconds REAL, sponsor TEXT, found_by TEXT,
+                                status TEXT DEFAULT 'ad', excerpt TEXT, confidence REAL);
+CREATE INDEX IF NOT EXISTS ads_episode ON ads(podcast, episode);
 INSERT OR IGNORE INTO meta VALUES ('version', 0);
 INSERT OR IGNORE INTO meta VALUES ('schema', 1);
 """

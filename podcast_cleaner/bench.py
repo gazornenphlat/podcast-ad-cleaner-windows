@@ -1,7 +1,7 @@
 """Test AI models: run each AI setup over episodes whose ads you've checked, and score it.
 
-The reference for an episode is what ads.csv says now - the cuts, minus the ones you marked
-"Not an ad" (and the held ads you approved, which are in ads.csv after the re-cut). Each setup
+The reference for an episode is what the ad history says now - the cuts, minus the ones you marked
+"Not an ad" (and the held ads you approved, which are in the history after the re-cut). Each setup
 gets the same transcript and the same rules as a normal run; the score says how much of the
 real ad time it found, which ads it missed, how much it would have cut wrongly, and how long it
 took. Idea from Podcast Ad Remover's local model evaluation (github.com/jdcb4/podcast-ad-remover).
