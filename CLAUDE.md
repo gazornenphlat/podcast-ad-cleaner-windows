@@ -20,7 +20,13 @@ podcast_cleaner/
   web/             the web pages: index.html, app.css, app.js (core tabs), pages.js (form tabs). Plain JS, no build.
   pipeline.py      one check: find episodes -> transcribe stage (download, transcribe; one thread per transcribing
                    computer) -> ad-finding stage (find ads, cut, write files; several episodes at once).
-                   The two stages are independent; a per-show lock keeps file writing for one show one at a time
+                   The two stages are independent; a per-show lock keeps file writing for one show one at a time.
+                   It runs the check (run_cycle, _Run); the steps are in:
+    jobs.py        what the steps share: Job, Hooks, Prepared, CycleResult, temp folder, per-show lock
+    discover.py    find_new_episodes: read the feeds, pick the episodes
+    prepare.py     prepare_episode: download, transcribe, second download
+    findads.py     _find_ads: all the ad detectors combined, what is held for review, removal_choices
+    finish.py      finish_episode: cut, tags, files, report, database
   whisperpool.py   transcription on this PC or on other PCs (speaches / whisper.cpp servers), one episode each
   transcribe.py    Whisper on this PC (faster-whisper / openai-whisper); whispercpp.py for whisper.cpp
   analyze.py, pool.py, lmstudio.py, cloud.py   finding ads with the AI; pool.py shares sections over Ollama PCs
