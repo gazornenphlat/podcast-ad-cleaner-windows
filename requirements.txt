@@ -1,13 +1,15 @@
-faster-whisper>=1.1
+# Exact versions, so a fresh install gets the same libraries every time (Python 3.10 - 3.12 on Windows).
+# To update one: change its number here, run install.ps1 again, then "Run Tests.bat".
+faster-whisper==1.2.1
 # openai-whisper   # optional: only if whisper.engine is openai-whisper
-requests>=2.31
-feedparser>=6.0
-defusedxml>=0.7
-PyYAML>=6.0
-ruamel.yaml>=0.18
-mutagen>=1.47
-pystray>=0.19
-Pillow>=10.0
-numpy
-pydantic>=2.5
-pywebview>=5.0
+requests==2.34.2
+feedparser==6.0.14
+defusedxml==0.7.1
+PyYAML==6.0.3
+ruamel.yaml==0.19.1
+mutagen==1.48.1
+pystray==0.19.5
+Pillow==12.3.0
+numpy==2.2.6
+pydantic==2.14.3
+pywebview==6.2.1
