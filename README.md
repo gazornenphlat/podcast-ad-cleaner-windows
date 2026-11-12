@@ -428,6 +428,7 @@ These ideas come from [MinusPod](https://github.com/ttlequals0/minuspod) (MIT li
   - ads the AI was 40–59% sure of
   - parts that differed on a second download, when nothing else found an ad there
   - speech missing from the publisher's transcript, when nothing else found an ad there
+  - ads that add up to one stretch longer than the longest ad you allow (`ad_removal.max_ad_seconds`)
 
   They stay in the audio until you decide. **Approve & cut** re-cuts the episode right away from the kept
   original, with no new download, transcription or AI, and teaches future episodes. **Dismiss** teaches that

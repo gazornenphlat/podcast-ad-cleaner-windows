@@ -1,7 +1,8 @@
 """Held for review: possible ads that weren't cut on their own, for you to approve or dismiss.
 
 Held ads come from: the AI being only somewhat sure, a part that was different on a second
-download, or speech missing from the publisher's own transcript. They stay in the audio until
+download, speech missing from the publisher's own transcript, or a detection longer than the
+longest ad allowed. They stay in the audio until
 you approve them. When the original download was kept, "Approve & cut" re-cuts the episode
 from it at once - no new download and no AI. Idea from MinusPod (MIT licence).
 

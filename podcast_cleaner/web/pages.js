@@ -247,7 +247,7 @@ const RULES_EXAMPLE = "Treat plugs for the hosts' Patreon, live tour dates and m
 const REMOVE_LABELS = { cross_promo: "promos for other shows", self_promo: "the hosts' own promos", intro: "generic intros", outro: "generic outros", jingle: "ad jingles, dead air" };
 const RULES_CUT = [
   { key: "ad_removal.min_ad_seconds", label: "Ignore ads shorter than", type: "number", min: 0, after: "seconds" },
-  { key: "ad_removal.max_ad_seconds", label: "Ignore ads longer than", type: "number", min: 30, after: "seconds (protects content)" },
+  { key: "ad_removal.max_ad_seconds", label: "Don't cut ads longer than", type: "number", min: 30, after: "seconds (held for review instead)" },
   { key: "ad_removal.padding_seconds", label: "Trim extra around each ad", type: "number", step: 0.5, min: 0, after: "seconds (if bits are left)" },
   ...Object.entries(REMOVE_LABELS).map(([k, l], i) => ({ key: `ad_removal.remove.${k}`, label: i ? "" : "Also cut", type: "check", text: l })),
 ];

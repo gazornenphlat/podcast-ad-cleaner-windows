@@ -244,3 +244,18 @@ def test_config_typed_keeps_unknown_and_yaml_off(make_cfg):
                    "podcasts:\n  - {name: X, rss: 'http://x', custom: 2}")
     assert cfg["second_download"]["mode"] is False and cfg["something_new"] == 1
     assert cfg["podcasts"][0]["custom"] == 2
+
+
+def test_finalize_ads_reports_too_long_and_trusts_you_and_the_feed():
+    from podcast_cleaner.analyze import finalize_ads
+    acfg = {"padding_seconds": 0, "merge_gap_seconds": 5, "min_ad_seconds": 10, "max_ad_seconds": 300}
+    ads = [{"start": 100, "end": 300, "label": "A", "source": "ai", "confidence": 0.9},
+           {"start": 302, "end": 500, "label": "B", "source": "ai", "confidence": 0.7},     # joins A: 400 s
+           {"start": 600, "end": 604, "label": "tiny", "source": "ai"},
+           {"start": 1000, "end": 1400, "label": "Yours", "source": "you"},
+           {"start": 2000, "end": 2400, "label": "Feed", "source": "feed"}]
+    long = []
+    kept = finalize_ads(ads, acfg, 3000.0, long)
+    assert [a["label"] for a in kept] == ["Yours", "Feed"]
+    assert [(a["start"], a["end"], a["label"]) for a in long] == [(100, 500, "A; B")]
+    assert [a["label"] for a in finalize_ads(ads, acfg, 3000.0)] == ["Yours", "Feed"]      # the list is optional

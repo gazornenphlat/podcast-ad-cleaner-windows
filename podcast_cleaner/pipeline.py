@@ -786,15 +786,20 @@ def _find_ads(cfg, job, prep, session, ollama_ok, hooks, pool, step, gaps, notes
             _hold(held, {"start": g["start"], "end": g["end"], "label": "Possible ad",
                          "why": "not in the publisher's transcript"})
 
-    ads = analyze.finalize_ads(raw_ads, acfg, duration)
+    too_long: list[dict] = []
+    ads = analyze.finalize_ads(raw_ads, acfg, duration, too_long)
 
     # optional second pass: exact edges of each ad
     if acfg.get("refine_boundaries", False) and ollama_ok and segments and pool and any(
             "ai" in a.get("source", "") for a in ads):
         ads = analyze.refine_boundaries(ads, segments, cfg["ollama"], pool, hooks.should_continue,
                                         lambda m: step(m, check=False), podcast_name)
-        ads = analyze.finalize_ads(ads, acfg, duration)
+        ads = analyze.finalize_ads(ads, acfg, duration, too_long)
     ads = _tidy_ads(ads, segments, acfg, not_ad_spans)
+    # ads that joined into one stretch longer than the longest ad allowed: left in, held for you
+    for a in too_long if review_on else []:
+        _hold(held, {"start": a["start"], "end": a["end"], "label": a["label"], "confidence": a.get("confidence"),
+                     "why": f"longer than the longest ad allowed ({fmt_duration(a['end'] - a['start'])})"})
 
     # held items: not ones already cut, nor text you said isn't an ad; words kept for learning
     spans = [(x0, x1) for x0, x1, _ in not_ad_spans]
