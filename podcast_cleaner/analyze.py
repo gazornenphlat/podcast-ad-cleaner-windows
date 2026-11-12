@@ -459,8 +459,8 @@ def analyze(segments: list[Segment], ocfg: dict, should_continue=lambda: True,
             text = " ".join(x.text for x in segments if s <= x.start < e)
             if cues.strong(text):
                 conf += 0.1
-            ads.append({"start": s, "end": e, "label": label, "source": "ai", "kind": kind,
-                        "confidence": round(max(0.0, min(1.0, conf)), 2)})
+            conf = round(max(0.0, min(1.0, conf)), 2)      # never more than 100% sure
+            ads.append({"start": s, "end": e, "label": label, "source": "ai", "kind": kind, "confidence": conf})
             log.info("  ad %s-%s: %s (%s, %.0f%% sure)", fmt_hms(s), fmt_hms(e), label, kind, conf * 100)
 
         for ch in data.get("chapters") or []:
@@ -558,8 +558,10 @@ def refine_boundaries(ads: list[dict], segments: list[Segment], ocfg: dict, pool
     return out
 
 
-def finalize_ads(ads: list[dict], acfg: dict, duration: float) -> list[dict]:
-    """Pad, merge overlapping/nearby ads, and drop implausible lengths."""
+def finalize_ads(ads: list[dict], acfg: dict, duration: float, too_long: list | None = None) -> list[dict]:
+    """Pad, merge overlapping/nearby ads, and drop implausible lengths.
+    too_long: if given, detections longer than max_ad_seconds are added to it (to hold for review)
+    instead of only being ignored. Ads the feed marked, or that you approved, are never too long."""
     pad, gap = float(acfg["padding_seconds"]), float(acfg["merge_gap_seconds"])
     items = sorted(
         ({**a, "start": max(0.0, a["start"] - pad), "end": min(duration, a["end"] + pad)} for a in ads),
@@ -584,9 +586,15 @@ def finalize_ads(ads: list[dict], acfg: dict, duration: float) -> list[dict]:
     kept = []
     for a in merged:
         length = a["end"] - a["start"]
-        feed_marked = "feed" in a["source"]
-        if length < acfg["min_ad_seconds"] or (length > acfg["max_ad_seconds"] and not feed_marked):
-            log.info("  ignoring %0.fs detection at %s (%s): outside min/max length",
+        trusted = "feed" in a["source"] or "you" in a["source"]
+        if length > acfg["max_ad_seconds"] and not trusted:
+            log.info("  not cut - %0.fs detection at %s (%s) is longer than the longest ad allowed",
+                     length, fmt_hms(a["start"]), a["label"])
+            if too_long is not None:
+                too_long.append(a)
+            continue
+        if length < acfg["min_ad_seconds"]:
+            log.info("  ignoring %0.fs detection at %s (%s): shorter than the shortest ad allowed",
                      length, fmt_hms(a["start"]), a["label"])
             continue
         kept.append(a)

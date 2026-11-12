@@ -436,3 +436,27 @@ def test_reprocess_later_waits_behind_new_episodes(server, make_cfg, audio, stub
     assert not DownloadRequests(cfg["output_dir"]).reanalyses()                      # the request is used up
     ep1 = [x for x in AdLog(cfg["output_dir"]).rows() if x["episode"] == "Ep 1"]
     assert [x["status"] for x in ep1] == ["not_ad"]       # your correction is kept; the read isn't cut again
+
+
+def test_too_long_detection_is_held_not_dropped(server, make_cfg, audio, stub_ai, fake_whisper, run_cycle, caplog):
+    """A detection longer than the longest ad allowed is left in but held for review; approving it cuts it."""
+    import logging
+    import re
+    from podcast_cleaner import app, review
+    fake_whisper(text_at)
+    ai = stub_ai(acme_ai(conf=1.0))
+    cfg, _ = setup_show(server, make_cfg, audio, ai, extra_cfg="")
+    cfg["ad_removal"]["max_ad_seconds"] = 15              # the Acme read is 20-30 s
+    with caplog.at_level(logging.INFO):
+        run_cycle(cfg)
+    st = state_of(cfg, "Test Show")["episodes"]["e1"]
+    assert st["ads_removed"] == 0
+    pend = review.pending(cfg)
+    assert len(pend) == 1 and "longer than the longest ad allowed" in pend[0]["why"] and pend[0]["has_original"]
+    assert "longer than the longest ad allowed" in report_of(cfg, "Test Show")
+    assert "% sure" in caplog.text and not re.search(r"\b1\d\d% sure", caplog.text.replace("100% sure", ""))
+    fake_worker = types.SimpleNamespace(cfg=cfg, busy=True, on_change=lambda: None, requests_waiting=False,
+                                        _refresh_now=False)
+    assert app.Worker.review_held(fake_worker, pend, "approved") == (1, 0)
+    run_cycle(cfg)                                        # the re-cut: what you approved is never "too long"
+    assert state_of(cfg, "Test Show")["episodes"]["e1"]["ads_removed"] == 1 and review.pending(cfg) == []

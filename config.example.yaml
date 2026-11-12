@@ -88,7 +88,7 @@ ollama:
   # "Treat plugs for the hosts' Patreon as ads."
   extra_instructions: ""
   # Remember sponsors found in earlier episodes of each show and mention them in the
-  # prompt, so recurring ads are caught more reliably. Stored in .podcast-state.json.
+  # prompt, so recurring ads are caught more reliably. Stored in the database (podcast-cleaner.db).
   remember_sponsors: true
   max_known_sponsors: 25
   # Every removed ad is recorded in <output_dir>\ads.csv (also shown in the window's Ads tab).
@@ -211,7 +211,7 @@ ai:
 ad_removal:
   enabled: true
   min_ad_seconds: 10       # ignore detections shorter than this
-  max_ad_seconds: 300      # ignore detections longer than this (likely false positive)
+  max_ad_seconds: 300      # don't cut detections longer than this; they are held for review
   merge_gap_seconds: 5     # join ads separated by less than this
   padding_seconds: 0.0     # extra seconds trimmed around each ad
   use_rss_ad_chapters: true  # chapters titled "Ad", "[Ad]", "Sponsor"... count as ads

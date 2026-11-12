@@ -1,3 +1,3 @@
 # For running the tests:  python -m pytest   (or double-click "Run Tests.bat")
 -r requirements.txt
-pytest>=8
+pytest==9.2.0

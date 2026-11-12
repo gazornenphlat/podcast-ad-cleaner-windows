@@ -2514,7 +2514,7 @@ class MainWindow(ExtraMixin):
         self.rule_vars = {k: tk.StringVar() for k in
                           ("ad_removal.min_ad_seconds", "ad_removal.max_ad_seconds", "ad_removal.padding_seconds")}
         rows = [("Ignore ads shorter than", "ad_removal.min_ad_seconds", (0, 600), "seconds"),
-                ("Ignore ads longer than", "ad_removal.max_ad_seconds", (30, 3600), "seconds (protects content)"),
+                ("Don't cut ads longer than", "ad_removal.max_ad_seconds", (30, 3600), "seconds (held for review instead)"),
                 ("Trim extra around each ad", "ad_removal.padding_seconds", (0, 10), "seconds (if bits are left)")]
         for i, (label, key, rng, hint) in enumerate(rows):
             ttk.Label(lim, text=label).grid(row=i, column=0, sticky="w", padx=(0, 10), pady=3)
