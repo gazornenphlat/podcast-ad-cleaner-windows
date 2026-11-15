@@ -257,9 +257,9 @@ class _Handler(BaseHTTPRequestHandler):
             elif not (parts and parts[0] in ("api", "app")):
                 return self._error(404, head_only)
         if parts and parts[0] in ("api", "app"):
-            if token and not token_given and not self.client_address[0].startswith("127."):
-                return self._error(404, head_only)       # with a token, only this PC may leave it out
             from . import api
+            if token and not token_given and not api._is_local(self.client_address[0]):
+                return self._error(404, head_only)       # with a token, only this PC may leave it out
             from urllib.parse import parse_qs
             api.handle(self, self.engine, method, parts, parse_qs(split.query), body, head_only,
                        token_given)

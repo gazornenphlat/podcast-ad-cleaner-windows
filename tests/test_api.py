@@ -134,6 +134,15 @@ def test_who_may_connect():
     assert api.client_allowed("8.8.8.8", True)          # had the token in the address
 
 
+def test_local_loopback_covers_ipv6():
+    # server.py uses this for the token check, so ::1 must behave like 127.0.0.1
+    assert api._is_local("127.0.0.1")
+    assert api._is_local("::1")
+    assert api._is_local("::ffff:127.0.0.1")
+    assert not api._is_local("192.168.1.20")
+    assert not api._is_local("8.8.8.8")
+
+
 def test_token_protects_the_api(make_cfg):
     cfg = make_cfg("server: {port: 0, host: 127.0.0.1, token: abc123}")
     w = Worker(__import__("pathlib").Path(cfg["_path"]), lambda notify=None: None)

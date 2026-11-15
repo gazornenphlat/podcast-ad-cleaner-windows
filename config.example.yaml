@@ -91,7 +91,8 @@ ollama:
   # prompt, so recurring ads are caught more reliably. Stored in the database (podcast-cleaner.db).
   remember_sponsors: true
   max_known_sponsors: 25
-  # Every removed ad is recorded in <output_dir>\ads.csv (also shown in the window's Ads tab).
+  # Every removed ad is recorded in the database (podcast-cleaner.db, table ads) and
+  # shown in the window's Ads tab; Found Ads > Download ads.csv exports a copy for Excel.
   # Sponsors from ALL shows are named in the prompt so they're recognised everywhere,
   # and anything you mark "Not an ad" in the Ads tab is listed as NOT an ad.
   use_global_sponsors: true
