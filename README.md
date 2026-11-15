@@ -33,7 +33,7 @@ Also fixed along the way:
 
 ## Install
 
-Requirements: Windows 10/11, ~3 GB free disk, Python 3.10–3.12 (installer can fetch it via winget).
+Requirements: Windows 10/11, ~3 GB free disk, Python 3.10–3.13 (installer can fetch it via winget).
 
 ```powershell
 # from the project folder

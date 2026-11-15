@@ -14,6 +14,7 @@ param([switch]$Folder, [switch]$BundleFfmpeg)
 
 $ErrorActionPreference = "Stop"
 $Root = $PSScriptRoot
+$version = (Select-String -Path "$Root\podcast_cleaner\__init__.py" -Pattern '__version__ = "([^"]+)"').Matches.Groups[1].Value
 Set-Location $Root
 $py = Join-Path $Root ".venv\Scripts\python.exe"
 if (-not (Test-Path $py)) { throw "Run install.ps1 first to create .venv" }
@@ -67,7 +68,7 @@ if ($BundleFfmpeg) {
     }
 }
 
-$zip = Join-Path $Root "dist\PodcastAdCleaner.zip"
+$zip = Join-Path $Root "dist\PodcastAdCleaner-$version.zip"
 if (Test-Path $zip) { Remove-Item $zip }
 Compress-Archive -Path "$out\*" -DestinationPath $zip
 Write-Host "`nBuilt: $out" -ForegroundColor Green

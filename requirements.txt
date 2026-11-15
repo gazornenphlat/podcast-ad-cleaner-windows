@@ -1,4 +1,4 @@
-# Exact versions, so a fresh install gets the same libraries every time (Python 3.10 - 3.12 on Windows).
+# Exact versions, so a fresh install gets the same libraries every time (Python 3.10 - 3.13 on Windows).
 # To update one: change its number here, run install.ps1 again, then "Run Tests.bat".
 faster-whisper==1.2.1
 # openai-whisper   # optional: only if whisper.engine is openai-whisper

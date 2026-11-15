@@ -99,7 +99,7 @@ DEFAULTS: dict = {
         "late_hours": 24,
         "max_hours_between_checks": 0,
     },
-    "processing": {"overlap_stages": True, "prepare_ahead": 1,
+    "processing": {"overlap_stages": True,
                    # transcription and ad-finding run independently: up to this many episodes transcribed and
                    # waiting for ad-finding, and this many checked for ads at once (0 = one per AI computer, max 4)
                    "transcribe_ahead": 4, "analyze_parallel": 0,

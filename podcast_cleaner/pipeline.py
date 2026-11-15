@@ -347,7 +347,7 @@ class _Run:
         proc = self.cfg.get("processing") or {}
         handoff: queue.Queue = queue.Queue()
         workers = max(1, self.wpool.slots())
-        backlog = max(workers, int(proc.get("transcribe_ahead", 4) or 1), int(proc.get("prepare_ahead", 1) or 1))
+        backlog = max(workers, int(proc.get("transcribe_ahead", 4) or 1))
         ahead = threading.Semaphore(backlog)
         analyzers_n = self._analysis_slots()
         log.info("Transcribing %d episode(s) at once, finding ads in %d at once (up to %d waiting in between)",
